@@ -1,0 +1,33 @@
+# Commitron configuration file
+# This file should be placed at ~/.commitronrc
+
+# AI provider configuration
+ai:
+  # Available providers: openai, gemini, ollama, claude
+  provider: openai
+  # Your API key for the selected provider
+  api_key: your-api-key-here
+  # The model to use - varies by provider
+  model: gpt-3.5-turbo
+  # Only needed for Ollama, defaults to http://localhost:11434
+  # ollama_host: http://localhost:11434
+
+# Commit message configuration
+commit:
+  # Available conventions: none, conventional, custom
+  convention: conventional
+  # Whether to include a message body after the subject
+  include_body: true
+  # Maximum length for the subject line
+  max_length: 72
+  # Only used when convention is 'custom'
+  # custom_template: "{{type}}({{scope}}): {{subject}}"
+
+# Context settings for AI
+context:
+  # Whether to include file names in the context
+  include_file_names: true
+  # Whether to include the diff in the context
+  include_diff: true
+  # Maximum length for the context to avoid exceeding token limits
+  max_context_length: 4000
