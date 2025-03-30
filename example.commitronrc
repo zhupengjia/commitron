@@ -35,6 +35,8 @@ commit:
   include_body: true
   # Maximum length for the subject line
   max_length: 72
+  # Maximum length for the commit body - keep this concise to avoid truncation
+  max_body_length: 400
   # Only used when convention is 'custom'
   # custom_template: "{{type}}({{scope}}): {{subject}}"
 
