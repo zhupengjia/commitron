@@ -52,19 +52,131 @@
 
 [![commitron Screen Shot][product-screenshot]](./.assets/screenshot.png)
 
-<!--
-There are many great README templates available on GitHub, however, I didn't find one that really suit my needs so I created this enhanced one. I want to create a README template so amazing that it'll be the last one you ever need.
+# Commitron
 
-Here's why:
+Commitron is a CLI tool that generates AI-powered commit messages based on your staged changes in a git repository.
 
-- Your time should be focused on creating something amazing. A project that solves a problem and helps others
-- You shouldn't be doing the same tasks over and over like creating a README from scratch
-- You should element DRY principles to the rest of your life :smile:
+## Features
 
-Of course, no one template will serve all projects since your needs may be different. So I'll be adding more in the near future. You may also suggest changes by forking this repo and creating a pull request or opening an issue.
+- 🤖 Uses AI to generate meaningful commit messages
+- 🔍 Analyzes your staged changes to understand what has been modified
+- 🧩 Supports multiple AI providers:
+  - OpenAI (ChatGPT)
+  - Google Gemini
+  - Ollama (local inference)
+  - Anthropic Claude
+- 📝 Supports various commit message conventions:
+  - No convention (plain text)
+  - [Conventional Commits](https://www.conventionalcommits.org/)
+  - Custom templates
+- ⚙️ Customizable settings via configuration file
 
-A list of commonly used resources that I find helpful are listed in the acknowledgements.
--->
+## Example output
+
+When you run `commitron` after staging some changes, you'll see output similar to this:
+
+```
+Generated Commit Message:
+------------------------
+feat(git): add support for detecting staged files and creating commits
+
+Implement Git integration for detecting staged files and generating
+commit messages based on the changes. This adds functionality to check
+if the current directory is a Git repository, retrieve a list of staged
+files, and create commits with AI-generated messages.
+------------------------
+
+Do you want to use this commit message? (y/n):
+```
+
+If you type `y`, the commit will be created using the generated message.
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/johnstilia/commitron.git
+
+# Navigate to the directory
+cd commitron
+
+# Build and install
+go install ./cmd/commitron
+```
+
+## Usage
+
+```bash
+# Stage your changes
+git add .
+
+# Run commitron to generate a commit message
+commitron
+
+# Use with a custom config file
+commitron --config /path/to/custom/config.yaml
+# or using shorthand flags
+commitron -c /path/to/custom/config.yaml
+
+# Available commands
+commitron generate            # Generate a commit message (default command)
+commitron init                # Initialize a new configuration file
+commitron version             # Show version information
+
+# Command options
+commitron generate --dry-run                  # Preview without committing
+commitron generate -d                         # Shorthand for --dry-run
+commitron generate -c /path/to/config         # Use custom config (shorthand)
+commitron init --force                        # Overwrite existing config
+commitron init -f                             # Shorthand for --force
+commitron init -c /path/to/config             # Initialize at custom location (shorthand)
+
+# Get help for any command
+commitron --help
+commitron [command] --help
+```
+
+## Configuration
+
+Commitron looks for a configuration file at `~/.commitronrc`. This is a YAML file that allows you to customize how the tool works.
+
+Example configuration:
+
+```yaml
+# AI provider configuration
+ai:
+  provider: openai
+  api_key: your-api-key-here
+  model: gpt-3.5-turbo
+
+# Commit message configuration
+commit:
+  convention: conventional
+  include_body: true
+  max_length: 72
+
+# Context settings for AI
+context:
+  include_file_names: true
+  include_diff: true
+  max_context_length: 4000
+```
+
+See [example.commitronrc](example.commitronrc) for a complete example with all available options.
+
+## API Keys
+
+To use Commitron, you'll need API keys for your chosen AI provider:
+
+- OpenAI: https://platform.openai.com/api-keys
+- Google Gemini: https://aistudio.google.com/app/apikey
+- Anthropic Claude: https://console.anthropic.com/keys
+
+For Ollama, you need to have it running locally. See [Ollama documentation](https://github.com/ollama/ollama) for more information.
+
+## License
+
+See [LICENSE.txt](LICENSE.txt) for details.
 
 ### Built With
 
