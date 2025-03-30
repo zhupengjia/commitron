@@ -4,13 +4,28 @@
 # AI provider configuration
 ai:
   # Available providers: openai, gemini, ollama, claude
-  provider: openai
+  provider: ollama
   # Your API key for the selected provider
   api_key: your-api-key-here
   # The model to use - varies by provider
-  model: gpt-3.5-turbo
+  model: mistral:latest
+  # Control creativity (0.0-1.0): lower values are more deterministic, higher values more creative
+  temperature: 0.7
+  # Set to true to see detailed debugging information about AI requests and responses
+  debug: false
+  # Maximum tokens in AI response (increase for longer commit messages or more complex changes)
+  max_tokens: 1000
+  # Optional custom system prompt - overrides default AI instructions
+  # Leave empty to use the default prompt that matches the selected convention
+  # For conventional commits, a default prompt like this will be used:
+  # system_prompt: |
+  #   Generate a concise git commit message written in present tense for the following code changes.
+  #   Commit message must be a maximum of 72 characters.
+  #   Include a brief descriptive body explaining the changes.
+  #   Choose an appropriate type from: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.
+  system_prompt: ""
   # Only needed for Ollama, defaults to http://localhost:11434
-  # ollama_host: http://localhost:11434
+  ollama_host: http://localhost:11434
 
 # Commit message configuration
 commit:
@@ -26,8 +41,46 @@ commit:
 # Context settings for AI
 context:
   # Whether to include file names in the context
+  # Provides basic information about which files changed
   include_file_names: true
-  # Whether to include the diff in the context
+
+  # Whether to include the git diff in the context
+  # This is the most important setting for accurate commit messages
+  # STRONGLY RECOMMENDED to keep this enabled
   include_diff: true
+
   # Maximum length for the context to avoid exceeding token limits
+  # Increase for large changes, decrease if you hit token limits
+  # For more accurate messages with large diffs, increase this value
   max_context_length: 4000
+
+  # Include statistics about file changes (+/- lines)
+  # Helps AI understand the magnitude and type of changes
+  include_file_stats: true
+
+  # Include brief description of what each file does (based on first few lines)
+  # Helps AI understand the purpose of each file
+  include_file_summaries: true
+
+  # Show the first N lines of each file for additional context
+  # Set to 0 to disable
+  # Note: This is skipped when include_diff is true to avoid duplication
+  show_first_lines_of_file: 5
+
+  # Include high-level repository structure for better context
+  # Helps for changes that affect multiple parts of the codebase
+  # May not be needed for simple changes
+  include_repo_structure: false
+
+# User interface configuration
+ui:
+  # Enable TUI (Text User Interface) for better visualization
+  # Shows staged files and commit message with confirmation
+  enable_tui: true
+
+  # Ask for confirmation before finalizing the commit message
+  confirm_commit: true
+
+  # Maximum number of files to display in the TUI (0 = no limit)
+  # Useful for commits with many files
+  display_files_limit: 20
