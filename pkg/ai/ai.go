@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/johnstilia/commitron/pkg/config"
+	"github.com/johnstilia/commitron/pkg/ui"
 )
 
 // Template constants for different commit message formats
@@ -608,7 +609,7 @@ func parseTextCommitMessage(text string) CommitMessage {
 	return msg
 }
 
-// DisplayStagedFiles prints the staged files in a TUI-like format
+// DisplayStagedFiles prints the staged files in a modern TUI format
 func DisplayStagedFiles(files []string) {
 	// Get current branch name
 	branch := "master" // Default if we can't get the branch
@@ -634,41 +635,145 @@ func DisplayStagedFiles(files []string) {
 		}
 	}
 
-	// Build the TUI output
-	fmt.Printf(" commitron                                                         (%s|●%d",
-		branch, stagedCount)
-
+	// Print header with branch and status
+	fmt.Printf("\n\033[1;36mcommitron\033[0m \033[38;5;244m%s\033[0m", branch)
+	if stagedCount > 0 {
+		fmt.Printf(" \033[1;32m●%d\033[0m", stagedCount)
+	}
 	if modifiedCount > 0 {
-		fmt.Printf("✚%d", modifiedCount)
+		fmt.Printf(" \033[1;33m✚%d\033[0m", modifiedCount)
 	}
+	fmt.Println()
 
-	fmt.Printf(")\n")
-	fmt.Println("┌   commitron ")
-	fmt.Println("│")
-	fmt.Printf("◇  Detected %d staged files:\n", stagedCount)
+	// Print staged changes section
+	fmt.Println("\n\033[1;36m📦 Staged Changes\033[0m")
 
-	// Print each file with indentation
+	// Print files with icons based on file type
 	for _, file := range files {
-		fmt.Printf("     %s\n", file)
+		// Get file extension and name
+		ext := strings.ToLower(filepath.Ext(file))
+		if ext != "" {
+			ext = ext[1:] // Remove the dot
+		}
+		name := filepath.Base(file)
+
+		// Get appropriate icon
+		icon := ui.GetIconForFile(name, ext)
+		fmt.Printf("   \033[38;5;244m%s\033[0m %s\n", icon, file)
 	}
 
-	fmt.Println("│")
-	fmt.Println("◇  Analyzing changes...")
-	fmt.Println("│")
+	// Print analyzing message
+	fmt.Println("\n\033[1;36m🔍 Analyzing changes...\033[0m")
 }
 
-// DisplayCommitMessage shows the generated commit message and asks for confirmation
-func DisplayCommitMessage(commitMsg string) (bool, error) {
-	fmt.Println("◆  Use this commit message?")
-	fmt.Println()
+// getFileIcon returns an appropriate icon based on file extension
+func getFileIcon(file string) string {
+	ext := strings.ToLower(filepath.Ext(file))
+	switch ext {
+	case ".go":
+		return "🔵"
+	case ".js", ".jsx", ".ts", ".tsx":
+		return "🟡"
+	case ".py":
+		return "🟢"
+	case ".md":
+		return "📝"
+	case ".yaml", ".yml", ".json":
+		return "⚙️"
+	case ".css", ".scss", ".sass":
+		return "🎨"
+	case ".html", ".htm":
+		return "🌐"
+	case ".sh", ".bash":
+		return "🐚"
+	case ".dockerfile", ".docker":
+		return "🐳"
+	default:
+		return "📄"
+	}
+}
 
-	// Display the commit message with minimal formatting
-	fmt.Printf("   %s\n", strings.ReplaceAll(commitMsg, "\n", "\n   "))
-	fmt.Println()
-	fmt.Println("│  ● Yes / ○ No")
+// wrapText wraps text at the specified width while preserving indentation
+func wrapText(text string, width int, indent string) string {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return ""
+	}
+
+	var lines []string
+	currentLine := indent + words[0]
+
+	for _, word := range words[1:] {
+		if len(currentLine)+1+len(word) <= width {
+			currentLine += " " + word
+		} else {
+			lines = append(lines, currentLine)
+			currentLine = indent + word
+		}
+	}
+	lines = append(lines, currentLine)
+
+	return strings.Join(lines, "\n")
+}
+
+// DisplayCommitMessage shows the generated commit message with a modern UI
+func DisplayCommitMessage(commitMsg string) (bool, error) {
+	// Print header
+	fmt.Println("\n\033[1;36m💬 Generated Commit Message\033[0m")
+	fmt.Println("\033[38;5;244m────────────────────────\033[0m")
+
+	// Display the commit message with proper formatting
+	lines := strings.Split(commitMsg, "\n")
+	inBody := false
+	indentation := "   " // Base indentation for all lines
+
+	for i, line := range lines {
+		if line == "" {
+			fmt.Println()
+			if i < len(lines)-1 {
+				inBody = true
+			}
+			continue
+		}
+
+		if inBody {
+			// For body text, wrap at 80 characters
+			// Check if line contains a file reference
+			if strings.Contains(strings.ToLower(line), "file:") || strings.Contains(strings.ToLower(line), "files:") {
+				// Extract file name if present
+				parts := strings.Split(line, ":")
+				if len(parts) > 1 {
+					filePart := strings.TrimSpace(parts[1])
+					// Try to extract file name from the text
+					if strings.Contains(filePart, " ") {
+						filePart = strings.Split(filePart, " ")[0]
+					}
+					// Get file extension and name
+					ext := strings.ToLower(filepath.Ext(filePart))
+					if ext != "" {
+						ext = ext[1:] // Remove the dot
+					}
+					name := filepath.Base(filePart)
+					// Get appropriate icon
+					icon := ui.GetIconForFile(name, ext)
+					// Replace the file name with icon + file name
+					line = strings.Replace(line, filePart, icon+" "+filePart, 1)
+				}
+			}
+			wrappedText := wrapText(line, 80, indentation)
+			fmt.Printf("\033[38;5;252m%s\033[0m\n", wrappedText)
+		} else {
+			// For subject line, don't wrap
+			fmt.Printf("%s\033[38;5;252m%s\033[0m\n", indentation, line)
+		}
+	}
+
+	// Print confirmation prompt
+	fmt.Println("\n\033[1;36m❓ Use this commit message?\033[0m")
+	fmt.Print("\033[38;5;244m   [Y] Yes  [N] No\033[0m\n\n")
 
 	// Get user input for confirmation
-	fmt.Print("   > ")
+	fmt.Print("\033[1;36m> \033[0m")
 	var response string
 	_, err := fmt.Scanln(&response)
 	if err != nil && err.Error() != "unexpected newline" {
@@ -682,10 +787,9 @@ func DisplayCommitMessage(commitMsg string) (bool, error) {
 	return response == "y" || response == "yes" || response == "", nil
 }
 
-// DisplayAnalysisComplete prints a message that the changes have been analyzed
+// DisplayAnalysisComplete prints a completion message
 func DisplayAnalysisComplete() {
-	fmt.Println("◇  ✓ Changes analyzed")
-	fmt.Println("│")
+	fmt.Println("\033[1;32m✓ Analysis complete\033[0m\n")
 }
 
 // GetGitDiff returns a more comprehensive git diff for the staged files
