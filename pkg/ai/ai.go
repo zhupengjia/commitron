@@ -37,6 +37,19 @@ const (
 	// Template for conventional commits
 	ConventionalCommitsJSON = `{
 		"instruction": "Generate a commit message following Conventional Commits specification",
+		"requirements": {
+			"must_start_with_type": true,
+			"must_have_subject": true,
+			"format_examples": [
+				"feat: add new user authentication",
+				"fix(auth): resolve login timeout issue",
+				"docs: update README installation steps"
+			],
+			"invalid_formats": [
+				": description without type",
+				"feature: (incorrect type name)"
+			]
+		},
 		"convention": {
 			"type": "conventional",
 			"types": {
@@ -141,7 +154,9 @@ Conventional Commits 1.0.0 Rules:
 5. Format Rules:
    - Types MUST be lowercase (feat, fix, docs, etc.)
    - Description MUST immediately follow the colon and space
-   - A longer commit body MAY be provided after a blank line following the description
+   - A longer commit body MUST be provided after a blank line following the description when include_body is true
+   - A body is required when include_body is set to true, otherwise it is optional
+   - When provided, the body must be meaningful and explain what changes were made and why
    - Footer MUST be separated by a blank line and follow the format "token: value" or "token # value"
    - Breaking changes MUST be indicated with "!" before colon or as "BREAKING CHANGE:" in footer
 
@@ -150,6 +165,9 @@ Conventional Commits 1.0.0 Rules:
    - feat(api): add ability to search by date
    - docs: correct spelling of CHANGELOG
    - feat!: send email when product is shipped (breaking change)
+   - feat: add user authentication
+
+     Implement secure user authentication with password hashing and session management.
 `
 
 // CommitTypeDescriptions maps commit types to their descriptions for AI guidance
@@ -234,12 +252,21 @@ func GenerateTextPrompt(cfg *config.Config, files []string, changes string) stri
 	// Build the prompt with structured information
 	prompts := []string{
 		"Generate a concise git commit message written in present tense for the following code changes with these specifications:",
-		fmt.Sprintf("CRITICAL: Commit message subject MUST NOT exceed %d characters total. YOU MUST COUNT THE CHARACTERS YOURSELF AND ENSURE THE TOTAL IS UNDER %d. This is a HARD REQUIREMENT.", cfg.Commit.MaxLength, cfg.Commit.MaxLength),
 	}
+
+	// Add specific format requirements for conventional commits first to emphasize importance
+	if cfg.Commit.Convention == config.ConventionalCommits {
+		prompts = append(prompts, "YOUR RESPONSE MUST START WITH A CONVENTIONAL COMMIT TYPE. Valid types are: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.")
+		prompts = append(prompts, "Format MUST BE: type(optional-scope): subject")
+		prompts = append(prompts, "Example: fix(parser): correct array parsing issue")
+		prompts = append(prompts, "DO NOT START YOUR RESPONSE WITH A COLON. The type MUST come first, followed by colon.")
+	}
+
+	prompts = append(prompts, fmt.Sprintf("CRITICAL: Commit message subject MUST NOT exceed %d characters total. YOU MUST COUNT THE CHARACTERS YOURSELF AND ENSURE THE TOTAL IS UNDER %d. This is a HARD REQUIREMENT.", cfg.Commit.MaxLength, cfg.Commit.MaxLength))
 
 	// Add body instructions based on configuration
 	if cfg.Commit.IncludeBody {
-		prompts = append(prompts, fmt.Sprintf("STRICT REQUIREMENT: Include a commit body that is VERY CONCISE and MUST NOT exceed %d characters. BE EXTREMELY BRIEF. DO NOT include line statistics (+/-), file lists, or raw metadata from the diff. NO fluffy descriptions. FOCUS ONLY on actual code changes in direct, technical language. AVOID unnecessary details. BE TERSE. BODY IS REQUIRED.", cfg.Commit.MaxBodyLength))
+		prompts = append(prompts, fmt.Sprintf("STRICT REQUIREMENT: Include a commit body that is VERY CONCISE and MUST NOT exceed %d characters. BE EXTREMELY BRIEF. DO NOT include line statistics (+/-), file lists, or raw metadata from the diff. NO fluffy descriptions. FOCUS ONLY on actual code changes in direct, technical language. AVOID unnecessary details. BE TERSE. BODY IS ABSOLUTELY REQUIRED AND MUST NOT BE EMPTY OR OMITTED.", cfg.Commit.MaxBodyLength))
 	} else {
 		prompts = append(prompts, "Do not include a commit body, only provide the subject line.")
 	}
@@ -466,10 +493,16 @@ func parseTextCommitMessage(text string) CommitMessage {
 		}
 	} else if len(lines) > 0 {
 		// No [SUBJECT] tag found, use first line
-		subject := lines[0]
+		subject := strings.TrimSpace(lines[0])
 
-		// Check for conventional commit format
-		if idx := strings.Index(subject, ":"); idx > 0 {
+		// Skip any leading ":" without a type (this fixes the issue of incorrect parsing)
+		if strings.HasPrefix(subject, ": ") {
+			subject = strings.TrimSpace(subject[2:])
+			// Apply default type since no type was provided
+			msg.Type = "chore"
+			msg.Subject = subject
+		} else if idx := strings.Index(subject, ":"); idx > 0 {
+			// Check for conventional commit format with type
 			typeScope := subject[:idx]
 			msg.Subject = strings.TrimSpace(subject[idx+1:])
 
@@ -486,8 +519,15 @@ func parseTextCommitMessage(text string) CommitMessage {
 				msg.Type = typeScope
 			}
 		} else {
+			// No conventional format found, default to chore type
+			msg.Type = "chore"
 			msg.Subject = subject
 		}
+	}
+
+	// Ensure we have a valid type for conventional commits
+	if msg.Type == "" {
+		msg.Type = "chore" // Apply default type if none found
 	}
 
 	// Handle [BODY] tag if found
@@ -545,6 +585,16 @@ func parseTextCommitMessage(text string) CommitMessage {
 			strings.Contains(strings.ToLower(msg.Body), "<optional body>") {
 			msg.Body = ""
 		}
+
+		// Remove markdown code block delimiters if present
+		msg.Body = strings.ReplaceAll(msg.Body, "```", "")
+
+		// Remove common template markers
+		msg.Body = strings.ReplaceAll(msg.Body, "[BODY]", "")
+
+		// Some AIs return the word "Body:" at the start - remove it
+		msg.Body = strings.TrimPrefix(strings.TrimSpace(msg.Body), "Body:")
+		msg.Body = strings.TrimPrefix(strings.TrimSpace(msg.Body), "body:")
 	}
 
 	// Ensure body is properly trimmed
@@ -752,7 +802,39 @@ func GenerateCommitMessage(cfg *config.Config, files []string, changes string) (
 	commitMsg, err := ParseCommitMessageJSON(rawResponse)
 	if err != nil {
 		debugPrint(cfg, "PARSING ERROR", err.Error())
-		return rawResponse, nil // Fall back to raw response if parsing fails
+		// For conventional commits, ensure we have at least a type
+		if cfg.Commit.Convention == config.ConventionalCommits {
+			// If parsing failed but we can extract something useful from the raw text
+			if strings.Contains(rawResponse, ": ") {
+				parts := strings.SplitN(rawResponse, ": ", 2)
+				if len(parts) == 2 {
+					potential_type := strings.TrimSpace(parts[0])
+					// Check if this could be a valid type
+					if isValidCommitType(potential_type) {
+						commitMsg.Type = potential_type
+						commitMsg.Subject = strings.TrimSpace(parts[1])
+						// Use the rest as body if applicable
+						if cfg.Commit.IncludeBody && strings.Contains(commitMsg.Subject, "\n\n") {
+							bodyParts := strings.SplitN(commitMsg.Subject, "\n\n", 2)
+							if len(bodyParts) == 2 {
+								commitMsg.Subject = bodyParts[0]
+								commitMsg.Body = bodyParts[1]
+							}
+						}
+						debugPrint(cfg, "MANUAL PARSING SUCCESSFUL", commitMsg)
+					} else {
+						// Default to a generic type
+						commitMsg.Type = "chore"
+						commitMsg.Subject = rawResponse
+					}
+				}
+			} else {
+				commitMsg.Type = "chore"
+				commitMsg.Subject = rawResponse
+			}
+		} else {
+			return rawResponse, nil // Fall back to raw response if parsing fails for non-conventional format
+		}
 	}
 
 	// Debug: Show the parsed commit message
@@ -1022,6 +1104,7 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 			cfg.Commit.MaxLength,
 			cfg.Commit.MaxBodyLength,
 			cfg.Commit.IncludeBody,
+			cfg.Commit.IncludeBody, // Pass include_body value to body_required field
 			string(filesJSON),
 			string(changesJSON),
 			subjectOnly,
@@ -1066,6 +1149,8 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 		if cfg.Commit.Convention == config.ConventionalCommits {
 			conventionalRulesInstructions = "You MUST follow these conventional commit rules:\n" + ConventionalCommitRules + "\n"
 			conventionalRulesInstructions += fmt.Sprintf("\nCRITICAL: The TOTAL length of 'type(scope): subject' MUST be under %d characters.\nExamples of good length: 'fix: update validation logic', 'feat(auth): add login timeout'\n", cfg.Commit.MaxLength)
+			conventionalRulesInstructions += "\nALWAYS start your response with a valid type. NEVER start with just a colon.\n"
+			conventionalRulesInstructions += "CORRECT: 'feat: add feature'\nINCORRECT: ': add feature'\n"
 		}
 
 		return "Your task is to create a commit message based on the specifications below. " +
@@ -1079,7 +1164,7 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 			"Format:\n\n" +
 			"For conventional commits, use this exact structure:\n" +
 			"{\n" +
-			"  \"type\": \"feat\", // One of: feat, fix, docs, etc.\n" +
+			"  \"type\": \"feat\", // One of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert\n" +
 			"  \"scope\": \"optional scope\", // Optional\n" +
 			"  \"subject\": \"concise subject line\",\n" +
 			"  \"body\": \"" + bodyExample(cfg.Commit.IncludeBody) + "\"\n" +
@@ -1125,7 +1210,7 @@ func extractKeyDiffContent(diff string) string {
 // bodyExample returns the appropriate body example text based on whether body is included
 func bodyExample(includeBody bool) string {
 	if includeBody {
-		return "Implements auto-truncation of commit messages that exceed length limits. Adds validation to ensure messages conform to conventional commit format."
+		return "This commit adds critical validation for commit messages to ensure they follow the conventional commit format. The changes include improved error handling, automatic truncation of long messages, and proper formatting of the commit type and subject."
 	}
 	return "leave empty"
 }
@@ -1162,6 +1247,15 @@ func generateWithOpenAI(cfg *config.Config, prompt string) (string, error) {
 	lengthPrefix := fmt.Sprintf("MOST IMPORTANT INSTRUCTION: Your commit message subject MUST be under %d characters total. ", cfg.Commit.MaxLength)
 	if cfg.Commit.Convention == config.ConventionalCommits {
 		lengthPrefix += fmt.Sprintf("For conventional commits, this means the ENTIRE string 'type(scope): subject' must be under %d characters. Be extremely brief.", cfg.Commit.MaxLength)
+		lengthPrefix += "\n\nYOU MUST START YOUR RESPONSE WITH A CONVENTIONAL COMMIT TYPE. DO NOT START WITH JUST A COLON."
+		lengthPrefix += "\nCORRECT FORMAT: 'feat: add new feature'"
+		lengthPrefix += "\nINCORRECT FORMAT: ': add new feature'"
+		lengthPrefix += "\nValid types are: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+
+		if cfg.Commit.IncludeBody {
+			lengthPrefix += "\n\nYOU MUST INCLUDE A COMMIT BODY AFTER THE SUBJECT. The body must be separated from the subject by a blank line."
+			lengthPrefix += "\nThe body MUST NOT be empty and should explain what changes were made and why."
+		}
 	}
 
 	// Prepend the length requirement to any system prompt
@@ -1233,8 +1327,19 @@ func generateWithOpenAI(cfg *config.Config, prompt string) (string, error) {
 		return "", fmt.Errorf("no response from OpenAI API")
 	}
 
+	content := strings.TrimSpace(response.Choices[0].Message.Content)
+
+	// For conventional commits, validate the response starts with a valid type
+	if cfg.Commit.Convention == config.ConventionalCommits {
+		// Fix if the response starts with a colon instead of a type
+		if strings.HasPrefix(content, ": ") {
+			content = "chore" + content
+			debugPrint(cfg, "FIXED RESPONSE FORMAT", content)
+		}
+	}
+
 	// Return the generated commit message
-	return strings.TrimSpace(response.Choices[0].Message.Content), nil
+	return content, nil
 }
 
 // generateWithGemini uses Google's Gemini to generate a commit message
@@ -1243,6 +1348,15 @@ func generateWithGemini(cfg *config.Config, prompt string) (string, error) {
 	lengthPrefix := fmt.Sprintf("CRITICAL INSTRUCTION: Your commit message subject MUST be under %d characters total. ", cfg.Commit.MaxLength)
 	if cfg.Commit.Convention == config.ConventionalCommits {
 		lengthPrefix += fmt.Sprintf("For conventional commits, this means the ENTIRE string 'type(scope): subject' must be under %d characters.", cfg.Commit.MaxLength)
+		lengthPrefix += "\n\nYOU MUST START YOUR RESPONSE WITH A CONVENTIONAL COMMIT TYPE. DO NOT START WITH JUST A COLON."
+		lengthPrefix += "\nCORRECT: 'feat: add new feature'"
+		lengthPrefix += "\nINCORRECT: ': add new feature'"
+		lengthPrefix += "\nValid types are: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+
+		if cfg.Commit.IncludeBody {
+			lengthPrefix += "\n\nYOU MUST INCLUDE A COMMIT BODY AFTER THE SUBJECT. The body must be separated from the subject by a blank line."
+			lengthPrefix += "\nThe body MUST NOT be empty and should explain what changes were made and why."
+		}
 	}
 
 	// Prepend the length requirement to the prompt
@@ -1337,8 +1451,19 @@ func generateWithGemini(cfg *config.Config, prompt string) (string, error) {
 		return "", fmt.Errorf("no response from Gemini API")
 	}
 
+	content := strings.TrimSpace(response.Candidates[0].Content.Parts[0].Text)
+
+	// For conventional commits, validate the response starts with a valid type
+	if cfg.Commit.Convention == config.ConventionalCommits {
+		// Fix if the response starts with a colon instead of a type
+		if strings.HasPrefix(content, ": ") {
+			content = "chore" + content
+			debugPrint(cfg, "FIXED RESPONSE FORMAT", content)
+		}
+	}
+
 	// Return the generated commit message
-	return strings.TrimSpace(response.Candidates[0].Content.Parts[0].Text), nil
+	return content, nil
 }
 
 // generateWithOllama uses Ollama (local) to generate a commit message
@@ -1347,6 +1472,15 @@ func generateWithOllama(cfg *config.Config, prompt string) (string, error) {
 	lengthPrefix := fmt.Sprintf("CRITICAL INSTRUCTION: Your commit message subject MUST be under %d characters total. ", cfg.Commit.MaxLength)
 	if cfg.Commit.Convention == config.ConventionalCommits {
 		lengthPrefix += fmt.Sprintf("For conventional commits, this means the ENTIRE string 'type(scope): subject' must be under %d characters.", cfg.Commit.MaxLength)
+		lengthPrefix += "\n\nYOU MUST START YOUR RESPONSE WITH A CONVENTIONAL COMMIT TYPE. DO NOT START WITH JUST A COLON."
+		lengthPrefix += "\nCORRECT: 'feat: add new feature'"
+		lengthPrefix += "\nINCORRECT: ': add new feature'"
+		lengthPrefix += "\nValid types are: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+
+		if cfg.Commit.IncludeBody {
+			lengthPrefix += "\n\nYOU MUST INCLUDE A COMMIT BODY AFTER THE SUBJECT. The body must be separated from the subject by a blank line."
+			lengthPrefix += "\nThe body MUST NOT be empty and should explain what changes were made and why."
+		}
 	}
 
 	// Prepend the length requirement to the prompt
@@ -1435,8 +1569,19 @@ func generateWithOllama(cfg *config.Config, prompt string) (string, error) {
 		return "", fmt.Errorf("error parsing Ollama response: %w (response was: %s)", err, string(respData))
 	}
 
+	content := strings.TrimSpace(response.Response)
+
+	// For conventional commits, validate the response starts with a valid type
+	if cfg.Commit.Convention == config.ConventionalCommits {
+		// Fix if the response starts with a colon instead of a type
+		if strings.HasPrefix(content, ": ") {
+			content = "chore" + content
+			debugPrint(cfg, "FIXED RESPONSE FORMAT", content)
+		}
+	}
+
 	// Return the generated commit message
-	return strings.TrimSpace(response.Response), nil
+	return content, nil
 }
 
 // generateWithClaude uses Anthropic's Claude to generate a commit message
@@ -1445,6 +1590,15 @@ func generateWithClaude(cfg *config.Config, prompt string) (string, error) {
 	lengthPrefix := fmt.Sprintf("CRITICAL INSTRUCTION: Your commit message subject MUST be under %d characters total. ", cfg.Commit.MaxLength)
 	if cfg.Commit.Convention == config.ConventionalCommits {
 		lengthPrefix += fmt.Sprintf("For conventional commits, this means the ENTIRE string 'type(scope): subject' must be under %d characters.", cfg.Commit.MaxLength)
+		lengthPrefix += "\n\nYOU MUST START YOUR RESPONSE WITH A CONVENTIONAL COMMIT TYPE. DO NOT START WITH JUST A COLON."
+		lengthPrefix += "\nCORRECT: 'feat: add new feature'"
+		lengthPrefix += "\nINCORRECT: ': add new feature'"
+		lengthPrefix += "\nValid types are: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+
+		if cfg.Commit.IncludeBody {
+			lengthPrefix += "\n\nYOU MUST INCLUDE A COMMIT BODY AFTER THE SUBJECT. The body must be separated from the subject by a blank line."
+			lengthPrefix += "\nThe body MUST NOT be empty and should explain what changes were made and why."
+		}
 	}
 
 	// Prepend the length requirement to the prompt
@@ -1528,8 +1682,19 @@ func generateWithClaude(cfg *config.Config, prompt string) (string, error) {
 		return "", fmt.Errorf("Claude API error: %s", response.Error.Message)
 	}
 
+	content := strings.TrimSpace(response.Content.Text)
+
+	// For conventional commits, validate the response starts with a valid type
+	if cfg.Commit.Convention == config.ConventionalCommits {
+		// Fix if the response starts with a colon instead of a type
+		if strings.HasPrefix(content, ": ") {
+			content = "chore" + content
+			debugPrint(cfg, "FIXED RESPONSE FORMAT", content)
+		}
+	}
+
 	// Return the generated commit message
-	return strings.TrimSpace(response.Content.Text), nil
+	return content, nil
 }
 
 // Helper function to get system prompt
@@ -1543,6 +1708,9 @@ func getSystemPrompt(cfg *config.Config) string {
 	if cfg.Commit.Convention == config.ConventionalCommits {
 		promptParts := []string{
 			"Generate a concise git commit message written in present tense for the following code changes.",
+			"YOUR RESPONSE MUST START WITH A CONVENTIONAL COMMIT TYPE FOLLOWED BY A COLON. Valid types are: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.",
+			"INCORRECT: ': description of changes' - This lacks a commit type",
+			"CORRECT: 'feat: add new feature' - This has a proper commit type",
 			fmt.Sprintf("CRITICAL REQUIREMENT: Commit message subject MUST NOT exceed %d characters total. YOU MUST COUNT THE CHARACTERS YOURSELF AND ENSURE THE TOTAL IS UNDER %d. This is a HARD REQUIREMENT.", cfg.Commit.MaxLength, cfg.Commit.MaxLength),
 			fmt.Sprintf("CRITICAL: The TOTAL combined length of 'type(scope): subject' must be strictly under %d characters. Adjust the subject accordingly.", cfg.Commit.MaxLength),
 			fmt.Sprintf("If using 'feat(scope): subject' format, the ENTIRE string including 'feat(scope): ' counts toward the %d character limit.", cfg.Commit.MaxLength),
@@ -1868,8 +2036,24 @@ func validateConventionalCommit(msg CommitMessage, cfg *config.Config) error {
 	}
 
 	// Body is required if configured
-	if cfg.Commit.IncludeBody && (msg.Body == "" || strings.TrimSpace(msg.Body) == "") {
-		return fmt.Errorf("commit body is required when include_body is true")
+	if cfg.Commit.IncludeBody {
+		trimmedBody := strings.TrimSpace(msg.Body)
+		if trimmedBody == "" {
+			return fmt.Errorf("commit body is required when include_body is true")
+		}
+
+		// Check if body is just placeholder text
+		if strings.Contains(strings.ToLower(trimmedBody), "<descriptive body") ||
+			strings.Contains(strings.ToLower(trimmedBody), "<optional body>") ||
+			strings.Contains(strings.ToLower(trimmedBody), "explanat") ||
+			strings.Contains(strings.ToLower(trimmedBody), "<commit message>") {
+			return fmt.Errorf("commit body contains placeholder text and needs to be replaced with actual content")
+		}
+
+		// Ensure body has reasonable length
+		if len(trimmedBody) < 10 {
+			return fmt.Errorf("commit body is too short (must be at least 10 characters)")
+		}
 	}
 
 	return nil
@@ -1912,4 +2096,22 @@ func fixConventionalCommitIssues(msg CommitMessage) CommitMessage {
 	}
 
 	return msg
+}
+
+// isValidCommitType checks if a string is a valid conventional commit type
+func isValidCommitType(t string) bool {
+	validTypes := map[string]bool{
+		"feat":     true,
+		"fix":      true,
+		"docs":     true,
+		"style":    true,
+		"refactor": true,
+		"perf":     true,
+		"test":     true,
+		"build":    true,
+		"ci":       true,
+		"chore":    true,
+		"revert":   true,
+	}
+	return validTypes[t]
 }
