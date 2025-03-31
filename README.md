@@ -21,8 +21,6 @@
     <a href="./README.md"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/stiliajohny/commitron">View Demo</a>
-    ·
     <a href="https://github.com/stiliajohny/commitron/issues/new?labels=i%3A+bug&template=1-bug-report.md">Report Bug</a>
     ·
     <a href="https://github.com/stiliajohny/commitron/issues/new?labels=i%3A+enhancement&template=2-feature-request.md">Request Feature</a>
@@ -33,18 +31,24 @@
 
 ## Table of Contents
 
-- [Table of Contents](#table-of-contents)
-- [About The Project](#about-the-project)
-  - [Built With](#built-with)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
+- [Commitron](#commitron)
+  - [Features](#features)
+  - [Example output](#example-output)
   - [Installation](#installation)
-- [Usage](#usage)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
-- [Acknowledgements](#acknowledgements)
+  - [Usage](#usage)
+  - [Configuration](#configuration)
+  - [API Keys](#api-keys)
+  - [License](#license)
+    - [Built With](#built-with)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Installation](#installation-1)
+  - [Usage](#usage-1)
+  - [Roadmap](#roadmap)
+  - [Contributing](#contributing)
+  - [License](#license-1)
+  - [Contact](#contact)
+  - [Acknowledgements](#acknowledgements)
 
 <!-- ABOUT THE PROJECT -->
 
@@ -168,9 +172,9 @@ See [example.commitronrc](example.commitronrc) for a complete example with all a
 
 To use Commitron, you'll need API keys for your chosen AI provider:
 
-- OpenAI: https://platform.openai.com/api-keys
-- Google Gemini: https://aistudio.google.com/app/apikey
-- Anthropic Claude: https://console.anthropic.com/keys
+- OpenAI: <https://platform.openai.com/api-keys>
+- Google Gemini: <https://aistudio.google.com/app/apikey>
+- Anthropic Claude: <https://console.anthropic.com/keys>
 
 For Ollama, you need to have it running locally. See [Ollama documentation](https://github.com/ollama/ollama) for more information.
 
@@ -281,7 +285,7 @@ Distributed under the GPLv3 License. See `LICENSE` for more information.
 
 ## Contact
 
-John Stilia - stilia.johny@gmail.com
+John Stilia - <stilia.johny@gmail.com>
 
 <!--
 Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
