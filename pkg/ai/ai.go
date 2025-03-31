@@ -81,7 +81,7 @@ const (
 			"max_subject_length": %d,
 			"max_body_length": %d,
 			"include_body": %t,
-			"body_required": true,
+			"body_required": %t,
 			"critical_note": "CRITICAL: The TOTAL combined length of 'type(scope): subject' MUST NOT exceed max_subject_length. This includes ALL characters. Keep subject extremely brief.",
 			"length_examples": "Examples of good length subjects: 'fix: update validation logic', 'feat(auth): add login timeout'"
 		},
@@ -130,6 +130,25 @@ var CommitTypeFormats = map[string]string{
 	"conventional": "<type>(<optional scope>): <commit message>",
 }
 
+// CommitTypeDescriptions maps commit types to their descriptions for AI guidance
+var CommitTypeDescriptions = map[string]string{
+	"": "",
+	"conventional": `Choose a type from the type-to-description JSON below that best describes the code changes:
+{
+  "docs": "Documentation only changes",
+  "style": "Changes that do not affect the meaning of the code (whitespace, formatting, missing semi-colons, etc)",
+  "refactor": "A code change that neither fixes a bug nor adds a feature",
+  "perf": "A code change that improves performance",
+  "test": "Adding missing tests or correcting existing tests",
+  "build": "Changes that affect the build system or external dependencies",
+  "ci": "Changes to CI configuration files and scripts",
+  "chore": "Other changes that don't modify source or test files",
+  "revert": "Reverts a previous commit",
+  "feat": "A new feature",
+  "fix": "A bug fix"
+}`,
+}
+
 // ConventionalCommitRules contains the specification for conventional commits
 const ConventionalCommitRules = `
 Conventional Commits 1.0.0 Rules:
@@ -169,25 +188,6 @@ Conventional Commits 1.0.0 Rules:
 
      Implement secure user authentication with password hashing and session management.
 `
-
-// CommitTypeDescriptions maps commit types to their descriptions for AI guidance
-var CommitTypeDescriptions = map[string]string{
-	"": "",
-	"conventional": `Choose a type from the type-to-description JSON below that best describes the code changes:
-{
-  "docs": "Documentation only changes",
-  "style": "Changes that do not affect the meaning of the code (whitespace, formatting, etc)",
-  "refactor": "A code change that neither fixes a bug nor adds a feature",
-  "perf": "A code change that improves performance",
-  "test": "Adding missing tests or correcting existing tests",
-  "build": "Changes that affect the build system or external dependencies",
-  "ci": "Changes to CI configuration files and scripts",
-  "chore": "Other changes that don't modify source or test files",
-  "revert": "Reverts a previous commit",
-  "feat": "A new feature",
-  "fix": "A bug fix"
-}`,
-}
 
 // CommitMessage represents a structured commit message
 type CommitMessage struct {
@@ -595,6 +595,11 @@ func parseTextCommitMessage(text string) CommitMessage {
 		// Some AIs return the word "Body:" at the start - remove it
 		msg.Body = strings.TrimPrefix(strings.TrimSpace(msg.Body), "Body:")
 		msg.Body = strings.TrimPrefix(strings.TrimSpace(msg.Body), "body:")
+
+		// Ensure body is properly separated from subject
+		if !strings.Contains(msg.Body, "\n\n") {
+			msg.Body = "\n\n" + msg.Body
+		}
 	}
 
 	// Ensure body is properly trimmed
@@ -1151,6 +1156,13 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 			conventionalRulesInstructions += fmt.Sprintf("\nCRITICAL: The TOTAL length of 'type(scope): subject' MUST be under %d characters.\nExamples of good length: 'fix: update validation logic', 'feat(auth): add login timeout'\n", cfg.Commit.MaxLength)
 			conventionalRulesInstructions += "\nALWAYS start your response with a valid type. NEVER start with just a colon.\n"
 			conventionalRulesInstructions += "CORRECT: 'feat: add feature'\nINCORRECT: ': add feature'\n"
+			conventionalRulesInstructions += "\nSTRICT REQUIREMENTS:\n"
+			conventionalRulesInstructions += "1. Type MUST be one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert\n"
+			conventionalRulesInstructions += "2. Type MUST be lowercase\n"
+			conventionalRulesInstructions += "3. Subject MUST be lowercase and not end with a period\n"
+			conventionalRulesInstructions += "4. Scope (if used) MUST be lowercase and not contain spaces or special characters\n"
+			conventionalRulesInstructions += "5. Body MUST be separated from subject by a blank line\n"
+			conventionalRulesInstructions += "6. Body MUST be meaningful and explain what changes were made and why\n"
 		}
 
 		return "Your task is to create a commit message based on the specifications below. " +
@@ -1165,8 +1177,8 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 			"For conventional commits, use this exact structure:\n" +
 			"{\n" +
 			"  \"type\": \"feat\", // One of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert\n" +
-			"  \"scope\": \"optional scope\", // Optional\n" +
-			"  \"subject\": \"concise subject line\",\n" +
+			"  \"scope\": \"optional scope\", // Optional, must be lowercase\n" +
+			"  \"subject\": \"concise subject line\", // Must be lowercase, no period\n" +
 			"  \"body\": \"" + bodyExample(cfg.Commit.IncludeBody) + "\"\n" +
 			"}\n\n" +
 			"Here are the specifications:\n\n" + template
@@ -2007,7 +2019,7 @@ func validateConventionalCommit(msg CommitMessage, cfg *config.Config) error {
 
 	// Type is required and must be one of the allowed types
 	if msg.Type == "" {
-		return fmt.Errorf("commit type is required")
+		return fmt.Errorf("commit type is required for conventional commits")
 	}
 
 	// Validate type is lowercase
@@ -2017,12 +2029,12 @@ func validateConventionalCommit(msg CommitMessage, cfg *config.Config) error {
 
 	// Check if type is allowed
 	if !allowedTypes[msg.Type] {
-		return fmt.Errorf("commit type '%s' is not allowed; must be one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert", msg.Type)
+		return fmt.Errorf("commit type '%s' is not allowed for conventional commits; must be one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert", msg.Type)
 	}
 
 	// Subject is required
 	if msg.Subject == "" {
-		return fmt.Errorf("commit subject is required")
+		return fmt.Errorf("commit subject is required for conventional commits")
 	}
 
 	// Subject should not end with a period
@@ -2035,11 +2047,31 @@ func validateConventionalCommit(msg CommitMessage, cfg *config.Config) error {
 		return fmt.Errorf("commit subject should not start with a capital letter")
 	}
 
+	// Subject should not contain newlines
+	if strings.Contains(msg.Subject, "\n") {
+		return fmt.Errorf("commit subject should not contain newlines")
+	}
+
+	// Subject should not be too generic
+	genericSubjects := map[string]bool{
+		"update": true,
+		"fix":    true,
+		"change": true,
+		"modify": true,
+		"add":    true,
+		"remove": true,
+		"delete": true,
+	}
+
+	if genericSubjects[strings.ToLower(msg.Subject)] {
+		return fmt.Errorf("commit subject is too generic, please be more specific about what was changed")
+	}
+
 	// Body is required if configured
 	if cfg.Commit.IncludeBody {
 		trimmedBody := strings.TrimSpace(msg.Body)
 		if trimmedBody == "" {
-			return fmt.Errorf("commit body is required when include_body is true")
+			return fmt.Errorf("commit body is required for conventional commits when include_body is true")
 		}
 
 		// Check if body is just placeholder text
@@ -2053,6 +2085,46 @@ func validateConventionalCommit(msg CommitMessage, cfg *config.Config) error {
 		// Ensure body has reasonable length
 		if len(trimmedBody) < 10 {
 			return fmt.Errorf("commit body is too short (must be at least 10 characters)")
+		}
+
+		// Ensure body is separated from subject by a blank line
+		if !strings.Contains(msg.Body, "\n\n") {
+			return fmt.Errorf("commit body must be separated from subject by a blank line")
+		}
+
+		// Check for common issues in body
+		if strings.Contains(strings.ToLower(trimmedBody), "this code") ||
+			strings.Contains(strings.ToLower(trimmedBody), "the changes") ||
+			strings.Contains(strings.ToLower(trimmedBody), "this commit") {
+			return fmt.Errorf("commit body should not start with phrases like 'this code', 'the changes', or 'this commit'")
+		}
+
+		// Ensure body is not just a list of files
+		if strings.Contains(trimmedBody, "file:") || strings.Contains(trimmedBody, "files:") {
+			return fmt.Errorf("commit body should not be a list of files, focus on what changed and why")
+		}
+	}
+
+	// Validate scope format if present
+	if msg.Scope != "" {
+		// Scope should be lowercase
+		if msg.Scope != strings.ToLower(msg.Scope) {
+			return fmt.Errorf("commit scope must be lowercase: %s", msg.Scope)
+		}
+
+		// Scope should not contain spaces
+		if strings.Contains(msg.Scope, " ") {
+			return fmt.Errorf("commit scope should not contain spaces")
+		}
+
+		// Scope should not contain special characters
+		if strings.ContainsAny(msg.Scope, "!@#$%^&*()_+={}[]|\\:;\"'<>,.?/~`") {
+			return fmt.Errorf("commit scope should not contain special characters")
+		}
+
+		// Scope should not be too generic
+		if genericSubjects[strings.ToLower(msg.Scope)] {
+			return fmt.Errorf("commit scope is too generic, please be more specific")
 		}
 	}
 
@@ -2093,6 +2165,76 @@ func fixConventionalCommitIssues(msg CommitMessage) CommitMessage {
 		r := []rune(msg.Subject)
 		r[0] = unicode.ToLower(r[0])
 		msg.Subject = string(r)
+	}
+
+	// Fix generic subjects
+	genericSubjects := map[string]string{
+		"update": "improve",
+		"change": "modify",
+		"modify": "enhance",
+		"add":    "implement",
+		"remove": "delete",
+		"delete": "remove",
+		"fix":    "resolve",
+	}
+
+	if replacement, ok := genericSubjects[strings.ToLower(msg.Subject)]; ok {
+		msg.Subject = replacement
+	}
+
+	// Clean up body if present
+	if msg.Body != "" {
+		// Remove common problematic phrases from start of body
+		bodyLines := strings.Split(msg.Body, "\n")
+		if len(bodyLines) > 0 {
+			firstLine := strings.ToLower(bodyLines[0])
+			removePhrases := []string{
+				"this code",
+				"the changes",
+				"this commit",
+				"the code",
+				"the file",
+				"the files",
+				"the changes made",
+				"the changes include",
+				"the changes made to",
+			}
+
+			for _, phrase := range removePhrases {
+				if strings.HasPrefix(firstLine, phrase) {
+					bodyLines[0] = strings.TrimSpace(strings.TrimPrefix(bodyLines[0], phrase))
+					break
+				}
+			}
+		}
+
+		// Remove file lists
+		var cleanedLines []string
+		for _, line := range bodyLines {
+			if !strings.Contains(strings.ToLower(line), "file:") &&
+				!strings.Contains(strings.ToLower(line), "files:") &&
+				!strings.Contains(strings.ToLower(line), "changed files:") {
+				cleanedLines = append(cleanedLines, line)
+			}
+		}
+
+		msg.Body = strings.Join(cleanedLines, "\n")
+		msg.Body = strings.TrimSpace(msg.Body)
+
+		// Ensure proper separation from subject
+		if !strings.Contains(msg.Body, "\n\n") {
+			msg.Body = "\n\n" + msg.Body
+		}
+	}
+
+	// Fix scope if present
+	if msg.Scope != "" {
+		msg.Scope = strings.ToLower(msg.Scope)
+
+		// Fix generic scopes
+		if replacement, ok := genericSubjects[msg.Scope]; ok {
+			msg.Scope = replacement
+		}
 	}
 
 	return msg
