@@ -10,8 +10,11 @@ class Commitron < Formula
     # Set GOPATH to the buildpath
     ENV["GOPATH"] = buildpath
 
-    # Clone the repository
-    system "git", "clone", "https://github.com/stiliajohny/commitron.git", "src/github.com/stiliajohny/commitron"
+    # Create the source directory
+    mkdir_p "src/github.com/stiliajohny/commitron"
+
+    # Copy the downloaded source to the correct location
+    cp_r Dir["*"], "src/github.com/stiliajohny/commitron/"
 
     # Build the binary
     system "go", "build", "-o", bin/"commitron", "./cmd/commitron"
