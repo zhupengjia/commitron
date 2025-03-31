@@ -69,7 +69,8 @@ const (
 			"max_body_length": %d,
 			"include_body": %t,
 			"body_required": true,
-			"critical_note": "CRITICAL: The TOTAL combined length of 'type(scope): subject' must not exceed max_subject_length. Adjust subject length to account for type and scope characters."
+			"critical_note": "CRITICAL: The TOTAL combined length of 'type(scope): subject' MUST NOT exceed max_subject_length. This includes ALL characters. Keep subject extremely brief.",
+			"length_examples": "Examples of good length subjects: 'fix: update validation logic', 'feat(auth): add login timeout'"
 		},
 		"context": {
 			"files": %s,
@@ -233,7 +234,7 @@ func GenerateTextPrompt(cfg *config.Config, files []string, changes string) stri
 	// Build the prompt with structured information
 	prompts := []string{
 		"Generate a concise git commit message written in present tense for the following code changes with these specifications:",
-		fmt.Sprintf("STRICT REQUIREMENT: Commit message subject MUST NOT exceed %d characters. DO NOT generate longer subjects.", cfg.Commit.MaxLength),
+		fmt.Sprintf("CRITICAL: Commit message subject MUST NOT exceed %d characters total. YOU MUST COUNT THE CHARACTERS YOURSELF AND ENSURE THE TOTAL IS UNDER %d. This is a HARD REQUIREMENT.", cfg.Commit.MaxLength, cfg.Commit.MaxLength),
 	}
 
 	// Add body instructions based on configuration
@@ -267,7 +268,10 @@ func GenerateTextPrompt(cfg *config.Config, files []string, changes string) stri
 
 	// Add specific limit instructions for conventional commits
 	if cfg.Commit.Convention == config.ConventionalCommits {
-		prompts = append(prompts, fmt.Sprintf("For conventional commits, CRITICAL: TOTAL length of 'type(scope): subject' must not exceed %d characters. Reduce length of subject to account for type and scope.", cfg.Commit.MaxLength))
+		prompts = append(prompts, fmt.Sprintf("For conventional commits: CRITICAL AND MOST IMPORTANT INSTRUCTION: TOTAL length of 'type(scope): subject' MUST BE STRICTLY LESS THAN %d characters. Count all characters including type, scope, colons, spaces, and subject text. Keep subject extremely brief to ensure total length stays under %d.", cfg.Commit.MaxLength, cfg.Commit.MaxLength))
+		prompts = append(prompts, fmt.Sprintf("Examples of good length subjects:\n- fix: update validation logic (%d chars)\n- feat(auth): add login timeout (%d chars)",
+			len("fix: update validation logic"),
+			len("feat(auth): add login timeout")))
 	}
 
 	// Add guidance for analyzing the diff
@@ -774,9 +778,9 @@ func GenerateCommitMessage(cfg *config.Config, files []string, changes string) (
 		subjectLength = len(commitMsg.Subject)
 	}
 
-	// Check if subject exceeds max length
+	// Check if subject exceeds max length - hard enforce the limit
 	if subjectLength > cfg.Commit.MaxLength {
-		// Attempt to truncate the subject if possible
+		// Always attempt to truncate the subject to meet the limit
 		if cfg.Commit.Convention == config.ConventionalCommits && commitMsg.Type != "" {
 			// Calculate maximum space available for the subject
 			maxSubjectSpace := cfg.Commit.MaxLength
@@ -788,7 +792,20 @@ func GenerateCommitMessage(cfg *config.Config, files []string, changes string) (
 
 			// Truncate subject if there's any space left
 			if maxSubjectSpace > 3 {
-				commitMsg.Subject = commitMsg.Subject[:maxSubjectSpace-3] + "..."
+				// Preserve meaning by truncating smartly - take first part of subject
+				originalSubject := commitMsg.Subject
+				if maxSubjectSpace < len(originalSubject) {
+					// Find a good breaking point (space, comma, etc.) if possible
+					breakPoint := maxSubjectSpace - 3
+					for i := breakPoint; i > breakPoint-10 && i > 0; i-- {
+						if originalSubject[i] == ' ' || originalSubject[i] == ',' || originalSubject[i] == ';' {
+							breakPoint = i
+							break
+						}
+					}
+					commitMsg.Subject = originalSubject[:breakPoint] + "..."
+				}
+
 				// Recalculate the total length
 				if commitMsg.Scope != "" {
 					subjectLength = len(commitMsg.Type) + len(commitMsg.Scope) + len(commitMsg.Subject) + 4
@@ -796,12 +813,74 @@ func GenerateCommitMessage(cfg *config.Config, files []string, changes string) (
 					subjectLength = len(commitMsg.Type) + len(commitMsg.Subject) + 2
 				}
 			}
+		} else {
+			// For non-conventional commits, just truncate the subject
+			if len(commitMsg.Subject) > cfg.Commit.MaxLength {
+				// Find a good breaking point (space, comma, etc.) if possible
+				breakPoint := cfg.Commit.MaxLength - 3
+				for i := breakPoint; i > breakPoint-10 && i > 0; i-- {
+					if commitMsg.Subject[i] == ' ' || commitMsg.Subject[i] == ',' || commitMsg.Subject[i] == ';' {
+						breakPoint = i
+						break
+					}
+				}
+				commitMsg.Subject = commitMsg.Subject[:breakPoint] + "..."
+				subjectLength = len(commitMsg.Subject)
+			}
 		}
 
-		// If still too long after truncation, return error
+		// If still too long after truncation, force more aggressive truncation
 		if subjectLength > cfg.Commit.MaxLength {
-			return "", fmt.Errorf("generated commit subject length (%d) exceeds maximum allowed (%d)",
-				subjectLength, cfg.Commit.MaxLength)
+			if cfg.Commit.Convention == config.ConventionalCommits && commitMsg.Type != "" {
+				// For conventional commits, preserve type and scope, but severely truncate subject
+				fixedType := commitMsg.Type
+				fixedScope := commitMsg.Scope
+
+				availableSpace := cfg.Commit.MaxLength
+				if fixedScope != "" {
+					availableSpace = cfg.Commit.MaxLength - len(fixedType) - len(fixedScope) - 4
+				} else {
+					availableSpace = cfg.Commit.MaxLength - len(fixedType) - 2
+				}
+
+				// Ensure minimum subject space
+				if availableSpace < 10 {
+					// If necessary, truncate scope to make room for subject
+					if fixedScope != "" && len(fixedScope) > 5 {
+						fixedScope = fixedScope[:5]
+						if fixedScope != "" {
+							availableSpace = cfg.Commit.MaxLength - len(fixedType) - len(fixedScope) - 4
+						} else {
+							availableSpace = cfg.Commit.MaxLength - len(fixedType) - 2
+						}
+					}
+				}
+
+				// Create a very brief subject if needed
+				if availableSpace < 10 {
+					commitMsg.Subject = "update"
+				} else {
+					commitMsg.Subject = commitMsg.Subject[:availableSpace-3] + "..."
+				}
+
+				// Update the values
+				commitMsg.Type = fixedType
+				commitMsg.Scope = fixedScope
+
+				// Recalculate final length
+				if commitMsg.Scope != "" {
+					subjectLength = len(commitMsg.Type) + len(commitMsg.Scope) + len(commitMsg.Subject) + 4
+				} else {
+					subjectLength = len(commitMsg.Type) + len(commitMsg.Subject) + 2
+				}
+			} else {
+				// For other commits, hard truncate
+				commitMsg.Subject = commitMsg.Subject[:cfg.Commit.MaxLength-3] + "..."
+				subjectLength = len(commitMsg.Subject)
+			}
+
+			// Add debug entry showing we did aggressive truncation
+			debugPrint(cfg, "AGGRESSIVE TRUNCATION", fmt.Sprintf("Truncated subject to length %d", subjectLength))
 		}
 	}
 
@@ -986,6 +1065,7 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 		conventionalRulesInstructions := ""
 		if cfg.Commit.Convention == config.ConventionalCommits {
 			conventionalRulesInstructions = "You MUST follow these conventional commit rules:\n" + ConventionalCommitRules + "\n"
+			conventionalRulesInstructions += fmt.Sprintf("\nCRITICAL: The TOTAL length of 'type(scope): subject' MUST be under %d characters.\nExamples of good length: 'fix: update validation logic', 'feat(auth): add login timeout'\n", cfg.Commit.MaxLength)
 		}
 
 		return "Your task is to create a commit message based on the specifications below. " +
@@ -995,6 +1075,7 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 			"DO NOT include any natural language explanation, introduction, or conclusion. " +
 			"Return JUST the JSON object and nothing else. " +
 			"IMPORTANT: Focus on the actual code changes in the diff and what they accomplish. " +
+			fmt.Sprintf("CRITICAL: Ensure total commit subject length is UNDER %d characters.\n", cfg.Commit.MaxLength) +
 			"Format:\n\n" +
 			"For conventional commits, use this exact structure:\n" +
 			"{\n" +
@@ -1074,13 +1155,25 @@ func generateWithOpenAI(cfg *config.Config, prompt string) (string, error) {
 		} `json:"error"`
 	}
 
+	// Get or create system prompt
+	systemPrompt := getSystemPrompt(cfg)
+
+	// Add a prefix emphasizing length requirements regardless of custom prompts
+	lengthPrefix := fmt.Sprintf("MOST IMPORTANT INSTRUCTION: Your commit message subject MUST be under %d characters total. ", cfg.Commit.MaxLength)
+	if cfg.Commit.Convention == config.ConventionalCommits {
+		lengthPrefix += fmt.Sprintf("For conventional commits, this means the ENTIRE string 'type(scope): subject' must be under %d characters. Be extremely brief.", cfg.Commit.MaxLength)
+	}
+
+	// Prepend the length requirement to any system prompt
+	systemPrompt = lengthPrefix + "\n\n" + systemPrompt
+
 	// Create request
 	reqBody := Request{
 		Model: cfg.AI.Model,
 		Messages: []Message{
 			{
 				Role:    "system",
-				Content: getSystemPrompt(cfg),
+				Content: systemPrompt,
 			},
 			{
 				Role:    "user",
@@ -1146,6 +1239,15 @@ func generateWithOpenAI(cfg *config.Config, prompt string) (string, error) {
 
 // generateWithGemini uses Google's Gemini to generate a commit message
 func generateWithGemini(cfg *config.Config, prompt string) (string, error) {
+	// Add a length requirement prefix to the prompt
+	lengthPrefix := fmt.Sprintf("CRITICAL INSTRUCTION: Your commit message subject MUST be under %d characters total. ", cfg.Commit.MaxLength)
+	if cfg.Commit.Convention == config.ConventionalCommits {
+		lengthPrefix += fmt.Sprintf("For conventional commits, this means the ENTIRE string 'type(scope): subject' must be under %d characters.", cfg.Commit.MaxLength)
+	}
+
+	// Prepend the length requirement to the prompt
+	enhancedPrompt := lengthPrefix + "\n\n" + prompt
+
 	type Request struct {
 		Contents []struct {
 			Parts []struct {
@@ -1179,7 +1281,7 @@ func generateWithGemini(cfg *config.Config, prompt string) (string, error) {
 					Text string `json:"text"`
 				}{
 					{
-						Text: prompt,
+						Text: enhancedPrompt,
 					},
 				},
 			},
@@ -1241,6 +1343,15 @@ func generateWithGemini(cfg *config.Config, prompt string) (string, error) {
 
 // generateWithOllama uses Ollama (local) to generate a commit message
 func generateWithOllama(cfg *config.Config, prompt string) (string, error) {
+	// Add a length requirement prefix to the prompt
+	lengthPrefix := fmt.Sprintf("CRITICAL INSTRUCTION: Your commit message subject MUST be under %d characters total. ", cfg.Commit.MaxLength)
+	if cfg.Commit.Convention == config.ConventionalCommits {
+		lengthPrefix += fmt.Sprintf("For conventional commits, this means the ENTIRE string 'type(scope): subject' must be under %d characters.", cfg.Commit.MaxLength)
+	}
+
+	// Prepend the length requirement to the prompt
+	enhancedPrompt := lengthPrefix + "\n\n" + prompt
+
 	type Request struct {
 		Model       string  `json:"model"`
 		Prompt      string  `json:"prompt"`
@@ -1271,7 +1382,7 @@ func generateWithOllama(cfg *config.Config, prompt string) (string, error) {
 	// Create request for the /api/generate endpoint
 	reqBody := Request{
 		Model:       cfg.AI.Model,
-		Prompt:      prompt,
+		Prompt:      enhancedPrompt, // Use the enhanced prompt
 		Stream:      false,
 		Temperature: cfg.AI.Temperature,
 		MaxTokens:   cfg.AI.MaxTokens,
@@ -1330,6 +1441,15 @@ func generateWithOllama(cfg *config.Config, prompt string) (string, error) {
 
 // generateWithClaude uses Anthropic's Claude to generate a commit message
 func generateWithClaude(cfg *config.Config, prompt string) (string, error) {
+	// Add a length requirement prefix to the prompt
+	lengthPrefix := fmt.Sprintf("CRITICAL INSTRUCTION: Your commit message subject MUST be under %d characters total. ", cfg.Commit.MaxLength)
+	if cfg.Commit.Convention == config.ConventionalCommits {
+		lengthPrefix += fmt.Sprintf("For conventional commits, this means the ENTIRE string 'type(scope): subject' must be under %d characters.", cfg.Commit.MaxLength)
+	}
+
+	// Prepend the length requirement to the prompt
+	enhancedPrompt := lengthPrefix + "\n\n" + prompt
+
 	type Message struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
@@ -1357,7 +1477,7 @@ func generateWithClaude(cfg *config.Config, prompt string) (string, error) {
 		Messages: []Message{
 			{
 				Role:    "user",
-				Content: prompt,
+				Content: enhancedPrompt, // Use the enhanced prompt
 			},
 		},
 		MaxTokens: cfg.AI.MaxTokens,
@@ -1423,8 +1543,9 @@ func getSystemPrompt(cfg *config.Config) string {
 	if cfg.Commit.Convention == config.ConventionalCommits {
 		promptParts := []string{
 			"Generate a concise git commit message written in present tense for the following code changes.",
-			fmt.Sprintf("STRICT REQUIREMENT: Commit message subject MUST NOT exceed %d characters. DO NOT generate longer subjects.", cfg.Commit.MaxLength),
+			fmt.Sprintf("CRITICAL REQUIREMENT: Commit message subject MUST NOT exceed %d characters total. YOU MUST COUNT THE CHARACTERS YOURSELF AND ENSURE THE TOTAL IS UNDER %d. This is a HARD REQUIREMENT.", cfg.Commit.MaxLength, cfg.Commit.MaxLength),
 			fmt.Sprintf("CRITICAL: The TOTAL combined length of 'type(scope): subject' must be strictly under %d characters. Adjust the subject accordingly.", cfg.Commit.MaxLength),
+			fmt.Sprintf("If using 'feat(scope): subject' format, the ENTIRE string including 'feat(scope): ' counts toward the %d character limit.", cfg.Commit.MaxLength),
 		}
 
 		// Add conventional commit rules
@@ -1452,14 +1573,11 @@ func getSystemPrompt(cfg *config.Config) string {
 - chore: Other changes that don't modify source or test files
 - revert: Reverts a previous commit`)
 
-		// Add advice about analyzing the context
-		promptParts = append(promptParts, `
-When analyzing the code changes:
-1. Look at the file types and their function in the codebase
-2. Consider the nature of changes (added/removed lines)
-3. Identify patterns across multiple files
-4. Determine if this is a feature addition, bug fix, refactor, etc.
-5. Be specific about what changed, but keep it concise`)
+		// Add examples of good length subjects
+		promptParts = append(promptParts, fmt.Sprintf("Examples of good length subjects that meet the %d character limit:\n- fix: update validation logic (%d chars)\n- feat(auth): add login timeout (%d chars)",
+			cfg.Commit.MaxLength,
+			len("fix: update validation logic"),
+			len("feat(auth): add login timeout")))
 
 		return strings.Join(promptParts, "\n")
 	}
