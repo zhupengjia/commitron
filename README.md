@@ -97,6 +97,18 @@ If you type `y`, the commit will be created using the generated message.
 
 ## Installation
 
+### Using Homebrew (macOS)
+
+```bash
+# Add the tap first
+brew tap stiliajohny/tap https://github.com/stiliajohny/homebrew-tap.git
+
+# Then install commitron
+brew install commitron
+```
+
+### Manual Installation
+
 ```bash
 # Clone the repository
 git clone https://github.com/johnstilia/commitron.git
