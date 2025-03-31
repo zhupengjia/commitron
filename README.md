@@ -35,6 +35,8 @@
   - [Features](#features)
   - [Example output](#example-output)
   - [Installation](#installation)
+    - [Using Homebrew (macOS)](#using-homebrew-macos)
+    - [Manual Installation](#manual-installation)
   - [Usage](#usage)
   - [Configuration](#configuration)
   - [API Keys](#api-keys)
@@ -100,8 +102,8 @@ If you type `y`, the commit will be created using the generated message.
 ### Using Homebrew (macOS)
 
 ```bash
-# Add the tap first
-brew tap stiliajohny/tap https://github.com/stiliajohny/homebrew-tap.git
+# Add the tap directly from the commitron repository
+brew tap stiliajohny/commitron https://github.com/stiliajohny/commitron.git
 
 # Then install commitron
 brew install commitron
