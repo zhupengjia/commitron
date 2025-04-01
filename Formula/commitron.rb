@@ -3,7 +3,7 @@ class Commitron < Formula
   homepage "https://github.com/stiliajohny/commitron"
   url "https://github.com/stiliajohny/commitron/archive/refs/tags/v0.1.0.tar.gz"
   # Copy the SHA256 output from step 4 here
-  sha256 "45d8c8d78fce2f45e0bd048c641b74af2230d21293a96d7344673de3e7491d74"
+  sha256 "9d9aef9610f06d39d8e4ce76b808a06bb84a34daf78a2e82841c4b57bbc4b1ff"
 
   depends_on "go" => :build
 
