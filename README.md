@@ -27,40 +27,22 @@
   </p>
 </p>
 
-<!-- TABLE OF CONTENTS -->
-
 ## Table of Contents
 
-- [Commitron](#commitron)
-  - [Features](#features)
-  - [Example output](#example-output)
-  - [Installation](#installation)
-    - [Using Homebrew (macOS)](#using-homebrew-macos)
-    - [Manual Installation](#manual-installation)
-  - [Usage](#usage)
-  - [Configuration](#configuration)
-  - [API Keys](#api-keys)
-  - [License](#license)
-    - [Built With](#built-with)
-  - [Getting Started](#getting-started)
-    - [Prerequisites](#prerequisites)
-    - [Installation](#installation-1)
-  - [Usage](#usage-1)
-  - [Roadmap](#roadmap)
-  - [Contributing](#contributing)
-  - [License](#license-1)
-  - [Contact](#contact)
-  - [Acknowledgements](#acknowledgements)
-
-<!-- ABOUT THE PROJECT -->
-
-## About The Project
-
-<!-- [![commitron Screen Shot][product-screenshot]](./.assets/screenshot.png) -->
+- [Features](#features)
+- [Example Output](#example-output)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [API Keys](#api-keys)
+- [Key Improvements](#key-improvements)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
 
 # Commitron
 
-Commitron is a CLI tool that generates AI-powered commit messages based on your staged changes in a git repository.
+Commitron is an AI-powered CLI tool that automatically generates meaningful commit messages and handles the entire commit workflow seamlessly.
 
 ## Features
 
@@ -299,129 +281,26 @@ This version of Commitron includes several enhancements for a better developer e
 - Multiple build targets (current platform, all platforms)
 - Easy development workflow
 
-## License
-
-See [LICENSE.txt](LICENSE.txt) for details.
-
-### Built With
-
-<!--
-This section should list any major frameworks that you built your project using. Leave any add-ons/plugins for the acknowledgements section. Here are a few examples.
-
-- [Bootstrap](https://getbootstrap.com)
-- [JQuery](https://jquery.com)
-- [Laravel](https://laravel.com)
--->
-
----
-
-<!-- GETTING STARTED -->
-
-## Getting Started
-
-<!--
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple example steps.
--->
-
-### Prerequisites
-
-<!--
-
-This is an example of how to list things you need to use the software and how to install them.
-
-- npm
-
-```sh
-npm install npm@latest -g
-```
--->
-
-### Installation
-
-<!--
-1. Get a free API Key at [https://example.com](https://example.com)
-2. Clone the repo
-
-```sh
-git clone https://github.com/your_username_/Project-Name.git
-```
-
-3. Install NPM packages
-
-```sh
-npm install
-```
-
-4. Enter your API in `config.js`
-
-```JS
-const API_KEY = 'ENTER YOUR API';
-```
--->
-
----
-
-<!-- USAGE EXAMPLES -->
-
-## Usage
-
-<!--
-Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources.
-
-_For more examples, please refer to the [Documentation](https://example.com)_
--->
-
----
-
-<!-- ROADMAP -->
-
-## Roadmap
-
-See the [open issues](https://github.com/stiliajohny/commitron/issues) for a list of proposed features (and known issues).
-
----
-
-<!-- CONTRIBUTING -->
 
 ## Contributing
 
-Contributions are what make the open source community such an amazing place to be learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+Contributions are welcome! Here's how to get started:
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+3. Commit your Changes (use commitron! 😉)
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
----
-
-<!-- LICENSE -->
-
 ## License
 
-Distributed under the GPLv3 License. See `LICENSE` for more information.
-
-<!-- CONTACT -->
+Distributed under the GPLv3 License. See [LICENSE.txt](LICENSE.txt) for more information.
 
 ## Contact
 
 John Stilia - <stilia.johny@gmail.com>
 
-<!--
-Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
--->
-
----
-
-<!-- ACKNOWLEDGEMENTS -->
-
-## Acknowledgements
-
-- [GitHub Emoji Cheat Sheet](https://www.webpagefx.com/tools/emoji-cheat-sheet)
-- [Img Shields](https://shields.io)
-- [Choose an Open Source License](https://choosealicense.com)
-- [GitHub Pages](https://pages.github.com)
+Project Link: [https://github.com/stiliajohny/commitron](https://github.com/stiliajohny/commitron)
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
