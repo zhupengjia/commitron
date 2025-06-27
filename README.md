@@ -64,38 +64,67 @@ Commitron is a CLI tool that generates AI-powered commit messages based on your 
 
 ## Features
 
-- 🤖 Uses AI to generate meaningful commit messages
-- 🔍 Analyzes your staged changes to understand what has been modified
-- 🧩 Supports multiple AI providers:
+- 🤖 **AI-Powered Commit Messages**: Uses AI to generate meaningful, structured commit messages
+- 🔄 **Automatic File Staging**: Automatically stages tracked modified files when no files are staged
+- 🎯 **Smart File Detection**: Only stages tracked files, ignores untracked files for clean commits
+- 📝 **Structured Output**: Generates commit messages with bullet-point descriptions of changes
+- 🚀 **No User Confirmation**: Automatically commits with generated messages for streamlined workflow
+- 🧩 **Multiple AI Providers**:
   - OpenAI (ChatGPT)
   - Google Gemini
   - Ollama (local inference)
   - Anthropic Claude
-- 📝 Supports various commit message conventions:
-  - No convention (plain text)
-  - [Conventional Commits](https://www.conventionalcommits.org/)
+- 📋 **Commit Conventions**:
+  - [Conventional Commits](https://www.conventionalcommits.org/) (recommended)
+  - Plain text
   - Custom templates
-- ⚙️ Customizable settings via configuration file
+- ⚙️ **Fully Configurable**: Customizable settings via configuration file
+- 🛠️ **Easy Build System**: Makefile support with custom Go path configuration
 
 ## Example output
 
-When you run `commitron` after staging some changes, you'll see output similar to this:
+Commitron now works seamlessly without manual intervention. Here's what you'll see:
 
+**When you have unstaged changes:**
+```bash
+$ commitron
+⚠️  No staged files found. Automatically staging all modified files...
+✓ Staged 4 files
+
+🤖 Analyzing changes...
+
+💬 Generated Commit Message
+────────────────────────
+fix: Resolve blocking issue in damage check worker
+
+- Increased prefetch_count from 1 to 10 to allow concurrent job processing
+- Made job processing non-blocking using asyncio.create_task()
+- Created dedicated process_damage_check_job() function for isolated job handling
+- Jobs now process concurrently instead of sequentially blocking each other
+────────────────────────
+
+💾 Creating commit... ✓ complete
 ```
-Generated Commit Message:
-------------------------
-feat(git): add support for detecting staged files and creating commits
 
-Implement Git integration for detecting staged files and generating
-commit messages based on the changes. This adds functionality to check
-if the current directory is a Git repository, retrieve a list of staged
-files, and create commits with AI-generated messages.
-------------------------
+**When you already have staged files:**
+```bash
+$ commitron
+🤖 Analyzing changes...
 
-Do you want to use this commit message? (y/n):
+💬 Generated Commit Message
+────────────────────────
+feat(auth): add JWT token refresh mechanism
+
+- Implemented automatic token refresh before expiration
+- Added refresh token storage in secure HTTP-only cookies
+- Created token validation middleware for protected routes
+- Updated login flow to return both access and refresh tokens
+────────────────────────
+
+💾 Creating commit... ✓ complete
 ```
 
-If you type `y`, the commit will be created using the generated message.
+The commit is automatically created with the AI-generated message - no manual confirmation needed!
 
 ## Installation
 
@@ -118,40 +147,70 @@ git clone https://github.com/johnstilia/commitron.git
 # Navigate to the directory
 cd commitron
 
-# Build and install
-go install ./cmd/commitron
+# Build using Make (recommended)
+make build
+
+# Or build with Go directly
+go build -o bin/commitron ./cmd/commitron
+
+# Add to your PATH or copy to a directory in your PATH
+cp bin/commitron /usr/local/bin/  # or your preferred location
 ```
+
+**Note:** If Go is not in your PATH, the Makefile will automatically use the Go installation at `/home/pzhu/software/go/bin/go`. You can modify the `GO_PATH` variable in the Makefile to match your Go installation.
 
 ## Usage
 
-```bash
-# Stage your changes
-git add .
+Commitron is designed to be simple and automatic:
 
-# Run commitron to generate a commit message
+```bash
+# Basic usage - automatically stages tracked files and commits
+commitron
+
+# Or manually stage files first (traditional approach)
+git add .
 commitron
 
 # Use with a custom config file
 commitron --config /path/to/custom/config.yaml
 # or using shorthand flags
 commitron -c /path/to/custom/config.yaml
+```
 
-# Available commands
-commitron generate            # Generate a commit message (default command)
+### Available Commands
+
+```bash
+commitron                     # Generate and commit (default command)
+commitron generate            # Generate and commit (explicit)
 commitron init                # Initialize a new configuration file
 commitron version             # Show version information
 
 # Command options
-commitron generate --dry-run                  # Preview without committing
-commitron generate -d                         # Shorthand for --dry-run
-commitron generate -c /path/to/config         # Use custom config (shorthand)
-commitron init --force                        # Overwrite existing config
-commitron init -f                             # Shorthand for --force
-commitron init -c /path/to/config             # Initialize at custom location (shorthand)
+commitron generate --dry-run  # Preview message without committing
+commitron generate -d         # Shorthand for --dry-run
+commitron init --force        # Overwrite existing config
+commitron init -f             # Shorthand for --force
 
 # Get help for any command
 commitron --help
 commitron [command] --help
+```
+
+### Auto-Staging Behavior
+
+- **Tracked files only**: Only stages files that are already tracked by Git (shown in "Changes not staged for commit")
+- **Ignores untracked**: Never stages new files (shown in "Untracked files")
+- **Smart detection**: If you have staged files, uses those; if not, automatically stages modified tracked files
+- **Clean workflow**: No manual staging required for existing files
+
+### Build Commands
+
+```bash
+make build                    # Build for current platform
+make build-all               # Build for all supported platforms  
+make test                    # Run tests
+make clean                   # Clean build artifacts
+make help                    # Show available targets
 ```
 
 ## Configuration
@@ -163,22 +222,35 @@ Example configuration:
 ```yaml
 # AI provider configuration
 ai:
-  provider: openai
-  api_key: your-api-key-here
-  model: gpt-3.5-turbo
+  provider: openai           # openai, gemini, ollama, claude
+  api_key: your-api-key-here  # Not needed for ollama
+  model: gpt-3.5-turbo       # Model to use
 
 # Commit message configuration
 commit:
-  convention: conventional
-  include_body: true
-  max_length: 72
+  convention: conventional   # conventional, none, custom
+  include_body: true        # Generate bullet-point descriptions
+  max_length: 72           # Maximum subject line length
+  max_body_length: 500     # Maximum body length
 
-# Context settings for AI
+# Context settings for AI analysis
 context:
-  include_file_names: true
-  include_diff: true
-  max_context_length: 4000
+  include_file_names: true      # Include file names in analysis
+  include_diff: true           # Include git diff in analysis
+  max_context_length: 4000     # Maximum context to send to AI
+  include_file_stats: false    # Include file statistics
+  include_file_summaries: false # Include file type summaries
+
+# UI settings
+ui:
+  enable_tui: true            # Enable text UI formatting
+  confirm_commit: false       # Auto-commit without confirmation (recommended)
 ```
+
+**Key Settings for Best Experience:**
+- Set `include_body: true` for structured bullet-point commit messages
+- Set `confirm_commit: false` for automatic commits without manual confirmation
+- Use `conventional` convention for standardized commit formats
 
 See [example.commitronrc](example.commitronrc) for a complete example with all available options.
 
@@ -191,6 +263,41 @@ To use Commitron, you'll need API keys for your chosen AI provider:
 - Anthropic Claude: <https://console.anthropic.com/keys>
 
 For Ollama, you need to have it running locally. See [Ollama documentation](https://github.com/ollama/ollama) for more information.
+
+## Key Improvements
+
+This version of Commitron includes several enhancements for a better developer experience:
+
+### 🔄 Automatic File Staging
+- No need to manually run `git add` before committing
+- Automatically detects and stages tracked modified files
+- Ignores untracked files to prevent accidental commits
+- Uses `git add -u` to stage only tracked files
+
+### 📝 Enhanced Commit Messages
+- Generates structured commit messages with bullet-point descriptions
+- Follows conventional commit format by default
+- AI generates direct commit messages without explanatory preamble
+- Example format:
+  ```
+  fix: Resolve blocking issue in damage check worker
+  
+  - Increased prefetch_count from 1 to 10 to allow concurrent job processing
+  - Made job processing non-blocking using asyncio.create_task()
+  - Created dedicated process_damage_check_job() function for isolated job handling
+  ```
+
+### 🚀 Streamlined Workflow
+- No user confirmation required - commits automatically
+- Clean output with colored progress indicators
+- Displays generated message before committing
+- Supports dry-run mode for testing (`--dry-run`)
+
+### 🛠️ Improved Build System
+- Custom Makefile with Go path detection
+- Support for non-standard Go installations
+- Multiple build targets (current platform, all platforms)
+- Easy development workflow
 
 ## License
 
