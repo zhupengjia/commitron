@@ -50,6 +50,61 @@ func GetStagedChanges() (string, error) {
 	return out.String(), nil
 }
 
+// GetModifiedFiles returns a list of tracked modified files (staged and unstaged, excludes untracked)
+func GetModifiedFiles() ([]string, error) {
+	// Use git diff --name-only HEAD to get only tracked files that have been modified
+	// This excludes untracked files
+	cmd := exec.Command("git", "diff", "--name-only", "HEAD")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	files := strings.Split(strings.TrimSpace(out.String()), "\n")
+	// Filter out empty strings
+	var result []string
+	for _, file := range files {
+		if file != "" {
+			result = append(result, file)
+		}
+	}
+
+	return result, nil
+}
+
+// GetUnstagedFiles returns a list of tracked modified but unstaged files (excludes untracked)
+func GetUnstagedFiles() ([]string, error) {
+	// git diff --name-only only shows tracked files that have been modified
+	// This excludes untracked files
+	cmd := exec.Command("git", "diff", "--name-only")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	files := strings.Split(strings.TrimSpace(out.String()), "\n")
+	// Filter out empty strings
+	var result []string
+	for _, file := range files {
+		if file != "" {
+			result = append(result, file)
+		}
+	}
+
+	return result, nil
+}
+
+// StageAllModified stages only tracked modified files (excludes untracked files)
+func StageAllModified() error {
+	// Get only modified tracked files (not untracked)
+	cmd := exec.Command("git", "add", "-u")
+	return cmd.Run()
+}
+
 // Commit creates a new commit with the given message
 func Commit(message string) error {
 	if message == "" {

@@ -46,8 +46,33 @@ var generateCmd = &cobra.Command{
 			return fmt.Errorf("\033[1;31m❌ Error getting staged files: %w\033[0m", err)
 		}
 
+		// If no staged files, try to stage all modified files automatically
 		if len(stagedFiles) == 0 {
-			return fmt.Errorf("\033[1;31m❌ No staged files found. Stage files using 'git add' before running commitron\033[0m")
+			fmt.Println("\033[1;33m⚠️  No staged files found. Automatically staging all modified files...\033[0m")
+			
+			// Check if there are any modified files to stage
+			modifiedFiles, err := git.GetModifiedFiles()
+			if err != nil {
+				return fmt.Errorf("\033[1;31m❌ Error getting modified files: %w\033[0m", err)
+			}
+			
+			if len(modifiedFiles) == 0 {
+				return fmt.Errorf("\033[1;31m❌ No modified files found. Make some changes before running commitron\033[0m")
+			}
+			
+			// Stage all modified files
+			err = git.StageAllModified()
+			if err != nil {
+				return fmt.Errorf("\033[1;31m❌ Error staging files: %w\033[0m", err)
+			}
+			
+			// Get staged files again after staging
+			stagedFiles, err = git.GetStagedFiles()
+			if err != nil {
+				return fmt.Errorf("\033[1;31m❌ Error getting staged files after staging: %w\033[0m", err)
+			}
+			
+			fmt.Printf("\033[1;32m✓ Staged %d files\033[0m\n", len(stagedFiles))
 		}
 
 		// Get changes content for context

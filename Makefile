@@ -3,6 +3,7 @@ BINARY_NAME=commitron
 BUILD_DIR=bin
 DIST_DIR=dist
 PLATFORMS=darwin/amd64 darwin/arm64 linux/amd64 windows/amd64
+GO_PATH=/home/pzhu/software/go/bin/go
 
 # Default target
 .DEFAULT_GOAL := help
@@ -15,24 +16,24 @@ help: ## Show this help message
 
 # Check if Go is installed
 check-go: ## Check if Go is installed
-	@if ! command -v go &> /dev/null; then \
-		echo "Go is not installed or not in PATH"; \
+	@if [ ! -f $(GO_PATH) ]; then \
+		echo "Go is not found at $(GO_PATH)"; \
 		exit 1; \
 	fi
-	@go version
+	@$(GO_PATH) version
 
 # Get dependencies
 deps: ## Get Go dependencies
-	go mod tidy
+	$(GO_PATH) mod tidy
 
 # Run tests
 test: ## Run Go tests
-	go test -v ./...
+	$(GO_PATH) test -v ./...
 
 # Build for current platform
 build: check-go deps ## Build for current platform
 	@echo "Building $(BINARY_NAME)..."
-	@go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/$(BINARY_NAME)
+	@$(GO_PATH) build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/$(BINARY_NAME)
 	@chmod +x $(BUILD_DIR)/$(BINARY_NAME)
 	@echo "Build successful!"
 
@@ -53,7 +54,7 @@ build-all: check-go deps ## Build for all supported platforms
 			output_path="$$output_path.exe"; \
 		fi; \
 		echo "Building for $$GOOS/$$GOARCH..."; \
-		GOOS=$$GOOS GOARCH=$$GOARCH go build -o "$$output_path" ./cmd/$(BINARY_NAME); \
+		GOOS=$$GOOS GOARCH=$$GOARCH $(GO_PATH) build -o "$$output_path" ./cmd/$(BINARY_NAME); \
 	done
 	@echo "Build completed successfully!"
 	@ls -la $(DIST_DIR)

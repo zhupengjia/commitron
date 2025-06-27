@@ -228,10 +228,27 @@ func FormatCommitMessage(msg CommitMessage, cfg *config.Config) string {
 		result.WriteString(msg.Subject)
 	}
 
-	// Add body if configured and provided
+	// Add body if configured and provided - format as bullet points
 	if cfg.Commit.IncludeBody && msg.Body != "" {
 		result.WriteString("\n\n")
-		result.WriteString(msg.Body)
+		
+		// Format body as bullet points if it's not already formatted
+		bodyLines := strings.Split(strings.TrimSpace(msg.Body), "\n")
+		for _, line := range bodyLines {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				// Add bullet point if not already present
+				if !strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, "* ") {
+					result.WriteString("- ")
+				}
+				result.WriteString(line)
+				result.WriteString("\n")
+			}
+		}
+		// Remove trailing newline
+		resultStr := result.String()
+		result.Reset()
+		result.WriteString(strings.TrimSuffix(resultStr, "\n"))
 	}
 
 	return result.String()
@@ -252,7 +269,10 @@ func GenerateTextPrompt(cfg *config.Config, files []string, changes string) stri
 
 	// Build the prompt with structured information
 	prompts := []string{
-		"Generate a concise git commit message written in present tense for the following code changes with these specifications:",
+		"You are a git commit message generator. Output ONLY the commit message, nothing else.",
+		"DO NOT include any explanatory text, analysis, or preamble like 'Based on the git diff provided' or 'It appears that'.",
+		"Your response should be the raw commit message that will be passed directly to git commit.",
+		"Write the commit message in present tense for the following code changes:",
 	}
 
 	// Add specific format requirements for conventional commits first to emphasize importance
@@ -267,12 +287,28 @@ func GenerateTextPrompt(cfg *config.Config, files []string, changes string) stri
 
 	// Add body instructions based on configuration
 	if cfg.Commit.IncludeBody {
-		prompts = append(prompts, fmt.Sprintf("STRICT REQUIREMENT: Include a commit body that is VERY CONCISE and MUST NOT exceed %d characters. BE EXTREMELY BRIEF. DO NOT include line statistics (+/-), file lists, or raw metadata from the diff. NO fluffy descriptions. FOCUS ONLY on actual code changes in direct, technical language. AVOID unnecessary details. BE TERSE. BODY IS ABSOLUTELY REQUIRED AND MUST NOT BE EMPTY OR OMITTED.", cfg.Commit.MaxBodyLength))
+		prompts = append(prompts, fmt.Sprintf("STRICT REQUIREMENT: Include a commit body with bullet points that is VERY CONCISE and MUST NOT exceed %d characters. Format the body as specific bullet points explaining what was changed. DO NOT include line statistics (+/-), file lists, or raw metadata from the diff. FOCUS ONLY on actual code changes in direct, technical language. Each bullet point should be a specific action taken. BODY IS ABSOLUTELY REQUIRED AND MUST NOT BE EMPTY OR OMITTED.", cfg.Commit.MaxBodyLength))
+		
+		prompts = append(prompts, "EXACT OUTPUT FORMAT EXAMPLE (your response should look exactly like this):")
+		prompts = append(prompts, "fix: Resolve blocking issue in damage check worker")
+		prompts = append(prompts, "")
+		prompts = append(prompts, "- Increased prefetch_count from 1 to 10 to allow concurrent job processing")
+		prompts = append(prompts, "- Made job processing non-blocking using asyncio.create_task()")
+		prompts = append(prompts, "- Created dedicated process_damage_check_job() function for isolated job handling")
+		prompts = append(prompts, "- Jobs now process concurrently instead of sequentially blocking each other")
+		
+		prompts = append(prompts, "DO NOT add any text before or after this format. Start directly with the commit type.")
 	} else {
 		prompts = append(prompts, "Do not include a commit body, only provide the subject line.")
 	}
 
-	prompts = append(prompts, "Exclude anything unnecessary. Your response will be passed directly into git commit.")
+	prompts = append(prompts, "CRITICAL CONSTRAINTS:")
+	prompts = append(prompts, "- Output ONLY the commit message, no explanations or analysis")
+	prompts = append(prompts, "- Do NOT start with phrases like 'Based on', 'It appears', 'This commit', etc.")
+	prompts = append(prompts, "- Do NOT include any meta-commentary about the changes")
+	prompts = append(prompts, "- Your entire response should be the commit message that will be used directly")
+	prompts = append(prompts, "- Exclude anything unnecessary. Your response will be passed directly into git commit.")
+	prompts = append(prompts, "- Start your response immediately with the commit type (e.g., 'fix:', 'feat:', etc.)")
 
 	// Add conventional commit rules if using that convention
 	if cfg.Commit.Convention == config.ConventionalCommits {
@@ -381,6 +417,9 @@ When analyzing the code changes:
 		// Just add the file names if detailed info is not enabled
 		prompts = append(prompts, fmt.Sprintf("\nFiles changed:\n%s", strings.Join(files, "\n")))
 	}
+
+	// Final constraint to ensure clean output
+	prompts = append(prompts, "\nREMEMBER: Your response must be ONLY the commit message. Do not include any analysis, explanation, or extra text. Start immediately with the commit type.")
 
 	return strings.Join(prompts, "\n")
 }
@@ -1104,16 +1143,21 @@ func GenerateCommitMessage(cfg *config.Config, files []string, changes string) (
 	// Debug: Show the final formatted message
 	debugPrint(cfg, "FINAL COMMIT MESSAGE", formattedMessage)
 
-	// Display the commit message in TUI format and ask for confirmation if enabled
-	if cfg.UI.EnableTUI && cfg.UI.ConfirmCommit {
-		confirmed, err := DisplayCommitMessage(formattedMessage)
-		if err != nil {
-			return "", fmt.Errorf("error getting confirmation: %w", err)
+	// Display the commit message but skip confirmation - auto-commit
+	if cfg.UI.EnableTUI {
+		fmt.Println("\n\033[1;36m💬 Generated Commit Message\033[0m")
+		fmt.Println("\033[38;5;244m────────────────────────\033[0m")
+		
+		// Display the commit message with proper formatting
+		lines := strings.Split(formattedMessage, "\n")
+		for _, line := range lines {
+			if line == "" {
+				fmt.Println()
+			} else {
+				fmt.Printf("   %s\n", line)
+			}
 		}
-
-		if !confirmed {
-			return "", fmt.Errorf("commit message rejected by user")
-		}
+		fmt.Println("\033[38;5;244m────────────────────────\033[0m")
 	}
 
 	return formattedMessage, nil
