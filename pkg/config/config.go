@@ -87,21 +87,21 @@ func DefaultConfig() *Config {
 	cfg.AI.Temperature = 0.7
 	cfg.AI.SystemPrompt = ""
 	cfg.AI.Debug = false
-	cfg.AI.MaxTokens = 1000
+	cfg.AI.MaxTokens = 4000
 
 	// Default commit settings
 	cfg.Commit.Convention = NoConvention
 	cfg.Commit.IncludeBody = true
-	cfg.Commit.MaxLength = 72
-	cfg.Commit.MaxBodyLength = 500 // Default maximum body length
+	cfg.Commit.MaxLength = 120
+	cfg.Commit.MaxBodyLength = 1000 // Default maximum body length
 
 	// Default context settings
 	cfg.Context.IncludeFileNames = true
 	cfg.Context.IncludeDiff = true
 	cfg.Context.MaxContextLength = 4000
-	cfg.Context.IncludeFileStats = true
-	cfg.Context.IncludeFileSummaries = true
-	cfg.Context.ShowFirstLinesOfFile = 5
+	cfg.Context.IncludeFileStats = false
+	cfg.Context.IncludeFileSummaries = false
+	cfg.Context.ShowFirstLinesOfFile = 0
 	cfg.Context.IncludeRepoStructure = false
 
 	// Default UI settings
@@ -167,7 +167,7 @@ func SaveExampleConfig(path string) error {
 	cfg.AI.Model = "gpt-3.5-turbo"
 	cfg.AI.Temperature = 0.7 // Example temperature value
 	cfg.AI.Debug = false     // Set to true to see AI prompts and responses
-	cfg.AI.MaxTokens = 1000  // Maximum response tokens
+	cfg.AI.MaxTokens = 4000  // Maximum response tokens
 
 	// Example of a custom system prompt (commented out by default)
 	cfg.AI.SystemPrompt = "# Custom system prompt (uncomment to use)\n# You are an expert developer who writes clear, concise commit messages.\n# Always follow the conventional commits format and be specific."
@@ -176,9 +176,9 @@ func SaveExampleConfig(path string) error {
 	cfg.Commit.CustomTemplate = "{{type}}({{scope}}): {{subject}}"
 
 	// Set example context values
-	cfg.Context.IncludeFileStats = true
-	cfg.Context.IncludeFileSummaries = true
-	cfg.Context.ShowFirstLinesOfFile = 5
+	cfg.Context.IncludeFileStats = false
+	cfg.Context.IncludeFileSummaries = false
+	cfg.Context.ShowFirstLinesOfFile = 0
 	cfg.Context.IncludeRepoStructure = false
 
 	// Set example UI values

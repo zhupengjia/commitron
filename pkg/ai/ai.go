@@ -272,7 +272,7 @@ func GenerateTextPrompt(cfg *config.Config, files []string, changes string) stri
 		"You are a git commit message generator. Output ONLY the commit message, nothing else.",
 		"DO NOT include any explanatory text, analysis, or preamble like 'Based on the git diff provided' or 'It appears that'.",
 		"Your response should be the raw commit message that will be passed directly to git commit.",
-		"Write the commit message in present tense for the following code changes:",
+		"Write CONCISE commit messages in present tense for the following code changes. Be brief and to the point.",
 	}
 
 	// Add specific format requirements for conventional commits first to emphasize importance
@@ -287,7 +287,7 @@ func GenerateTextPrompt(cfg *config.Config, files []string, changes string) stri
 
 	// Add body instructions based on configuration
 	if cfg.Commit.IncludeBody {
-		prompts = append(prompts, fmt.Sprintf("STRICT REQUIREMENT: Include a commit body with bullet points that is VERY CONCISE and MUST NOT exceed %d characters. Format the body as specific bullet points explaining what was changed. DO NOT include line statistics (+/-), file lists, or raw metadata from the diff. FOCUS ONLY on actual code changes in direct, technical language. Each bullet point should be a specific action taken. BODY IS ABSOLUTELY REQUIRED AND MUST NOT BE EMPTY OR OMITTED.", cfg.Commit.MaxBodyLength))
+		prompts = append(prompts, fmt.Sprintf("STRICT REQUIREMENT: Include a commit body with bullet points that is VERY CONCISE and MUST NOT exceed %d characters. Format the body as specific bullet points explaining what was changed. DO NOT include line statistics (+/-), file lists, or raw metadata from the diff. FOCUS ONLY on actual code changes in direct, technical language. Each bullet point should be a specific action taken. BODY IS ABSOLUTELY REQUIRED AND MUST NOT BE EMPTY OR OMITTED. KEEP IT CONCISE - aim for brief, clear explanations without unnecessary words.", cfg.Commit.MaxBodyLength))
 		
 		prompts = append(prompts, "EXACT OUTPUT FORMAT EXAMPLE (your response should look exactly like this):")
 		prompts = append(prompts, "fix: Resolve blocking issue in damage check worker")
@@ -419,7 +419,7 @@ When analyzing the code changes:
 	}
 
 	// Final constraint to ensure clean output
-	prompts = append(prompts, "\nREMEMBER: Your response must be ONLY the commit message. Do not include any analysis, explanation, or extra text. Start immediately with the commit type.")
+	prompts = append(prompts, "\nREMEMBER: Your response must be ONLY the commit message. Do not include any analysis, explanation, or extra text. Start immediately with the commit type. KEEP IT CONCISE AND FOCUSED.")
 
 	return strings.Join(prompts, "\n")
 }
@@ -831,43 +831,16 @@ func DisplayAnalysisComplete() {
 	fmt.Println("\033[1;32m✓ Analysis complete\033[0m\n")
 }
 
-// GetGitDiff returns a more comprehensive git diff for the staged files
+// GetGitDiff returns clean git diff output for the staged files
 func GetGitDiff(files []string) (string, error) {
-	var fullDiff strings.Builder
-
-	// Add a header with overall information
-	cmd := exec.Command("git", "diff", "--staged", "--stat")
-	statOutput, err := cmd.Output()
-	if err == nil {
-		fullDiff.WriteString("# Summary of changes:\n")
-		fullDiff.WriteString(string(statOutput))
-		fullDiff.WriteString("\n")
+	// Get clean git diff output without extra headers
+	cmd := exec.Command("git", "diff", "--staged")
+	diffOutput, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("error getting git diff: %w", err)
 	}
 
-	// Get detailed diff for each file
-	for _, file := range files {
-		// Get file type for better context
-		fileExt := strings.TrimPrefix(filepath.Ext(file), ".")
-		if fileExt == "" {
-			fileExt = "text"
-		}
-
-		// Add file header
-		fullDiff.WriteString(fmt.Sprintf("\n# File: %s (type: %s)\n", file, fileExt))
-
-		// Get the actual diff with more context lines
-		cmd := exec.Command("git", "diff", "--staged", "-U10", "--", file)
-		diffOutput, err := cmd.Output()
-		if err == nil {
-			fullDiff.WriteString(string(diffOutput))
-		} else {
-			fullDiff.WriteString(fmt.Sprintf("Error getting diff: %s\n", err))
-		}
-
-		fullDiff.WriteString("\n")
-	}
-
-	return fullDiff.String(), nil
+	return string(diffOutput), nil
 }
 
 // GenerateCommitMessage generates a commit message using the configured AI provider
@@ -1293,7 +1266,7 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 		// Add explicit instructions to return ONLY valid JSON
 		bodyInstructions := ""
 		if cfg.Commit.IncludeBody {
-			bodyInstructions = "YOU MUST INCLUDE A BODY. The body must be concise, direct, and technical - focusing only on actual changes made. DO NOT include line statistics, file lists, or formatting details like '+X/-Y lines'. DO NOT include raw metadata from the diff. NO marketing language or fluffy descriptions. "
+			bodyInstructions = "YOU MUST INCLUDE A BODY. The body must be VERY CONCISE, direct, and technical - focusing only on actual changes made. Keep it brief and to the point. DO NOT include line statistics, file lists, or formatting details like '+X/-Y lines'. DO NOT include raw metadata from the diff. NO marketing language or fluffy descriptions. Use clear, short bullet points. "
 		} else {
 			bodyInstructions = "DO NOT include a body. "
 		}
@@ -1313,13 +1286,13 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 			conventionalRulesInstructions += "6. Body MUST be meaningful and explain what changes were made and why\n"
 		}
 
-		return "Your task is to create a commit message based on the specifications below. " +
+		return "Your task is to create a CONCISE commit message based on the specifications below. " +
 			"EXTREMELY IMPORTANT: Return ONLY a valid JSON object with no explanatory text. " +
 			bodyInstructions +
 			conventionalRulesInstructions +
 			"DO NOT include any natural language explanation, introduction, or conclusion. " +
 			"Return JUST the JSON object and nothing else. " +
-			"IMPORTANT: Focus on the actual code changes in the diff and what they accomplish. " +
+			"IMPORTANT: Focus on the actual code changes in the diff and what they accomplish. Be BRIEF and CONCISE. " +
 			fmt.Sprintf("CRITICAL: Ensure total commit subject length is UNDER %d characters.\n", cfg.Commit.MaxLength) +
 			"Format:\n\n" +
 			"For conventional commits, use this exact structure:\n" +
