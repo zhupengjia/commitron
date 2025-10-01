@@ -37,14 +37,15 @@ const (
 type Config struct {
 	// AI provider configuration
 	AI struct {
-		Provider     AIProvider `yaml:"provider"`
-		APIKey       string     `yaml:"api_key"`
-		Model        string     `yaml:"model"`
-		OllamaHost   string     `yaml:"ollama_host,omitempty"`
-		Temperature  float64    `yaml:"temperature"`
-		SystemPrompt string     `yaml:"system_prompt"`
-		Debug        bool       `yaml:"debug,omitempty"`      // When true, prints debug info about AI requests
-		MaxTokens    int        `yaml:"max_tokens,omitempty"` // Maximum tokens to generate in response
+		Provider       AIProvider `yaml:"provider"`
+		APIKey         string     `yaml:"api_key"`
+		Model          string     `yaml:"model"`
+		OllamaHost     string     `yaml:"ollama_host,omitempty"`
+		OpenAIEndpoint string     `yaml:"openai_endpoint,omitempty"` // Custom OpenAI API endpoint
+		Temperature    float64    `yaml:"temperature"`
+		SystemPrompt   string     `yaml:"system_prompt"`
+		Debug          bool       `yaml:"debug,omitempty"`      // When true, prints debug info about AI requests
+		MaxTokens      int        `yaml:"max_tokens,omitempty"` // Maximum tokens to generate in response
 	} `yaml:"ai"`
 
 	// Commit message configuration
@@ -82,6 +83,7 @@ func DefaultConfig() *Config {
 	// Default AI settings
 	cfg.AI.Provider = OpenAI
 	cfg.AI.Model = "gpt-3.5-turbo"
+	cfg.AI.OpenAIEndpoint = "https://api.openai.com/v1/chat/completions"
 	cfg.AI.Temperature = 0.7
 	cfg.AI.SystemPrompt = ""
 	cfg.AI.Debug = false

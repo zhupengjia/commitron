@@ -3,7 +3,7 @@ BINARY_NAME=commitron
 BUILD_DIR=bin
 DIST_DIR=dist
 PLATFORMS=darwin/amd64 darwin/arm64 linux/amd64 windows/amd64
-GO_PATH=/home/pzhu/software/go/bin/go
+GO_PATH=$(shell which go)
 
 # Default target
 .DEFAULT_GOAL := help

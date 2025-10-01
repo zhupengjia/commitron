@@ -26,6 +26,9 @@ ai:
   #system_prompt: ""
   # Only needed for Ollama, defaults to http://localhost:11434
   ollama_host: http://localhost:11434
+  # Optional custom OpenAI API endpoint (e.g., for OpenAI-compatible services)
+  # Defaults to https://api.openai.com/v1/chat/completions if not specified
+  #openai_endpoint: https://api.openai.com/v1/chat/completions
 
 # Commit message configuration
 commit:

@@ -1395,9 +1395,13 @@ func generateWithOpenAI(cfg *config.Config, prompt string) (string, error) {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		Error json.RawMessage `json:"error,omitempty"`
+	}
+
+	type ErrorResponse struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+		Code    string `json:"code"`
 	}
 
 	// Get or create system prompt
@@ -1446,8 +1450,14 @@ func generateWithOpenAI(cfg *config.Config, prompt string) (string, error) {
 		return "", err
 	}
 
+	// Get endpoint from config or use default
+	endpoint := cfg.AI.OpenAIEndpoint
+	if endpoint == "" {
+		endpoint = "https://api.openai.com/v1/chat/completions"
+	}
+
 	// Make API request
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(reqData))
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(reqData))
 	if err != nil {
 		return "", err
 	}
@@ -1478,8 +1488,19 @@ func generateWithOpenAI(cfg *config.Config, prompt string) (string, error) {
 	}
 
 	// Check for API error
-	if response.Error.Message != "" {
-		return "", fmt.Errorf("OpenAI API error: %s", response.Error.Message)
+	if len(response.Error) > 0 {
+		// Try to parse as object first
+		var errResp ErrorResponse
+		if err := json.Unmarshal(response.Error, &errResp); err == nil && errResp.Message != "" {
+			return "", fmt.Errorf("OpenAI API error: %s", errResp.Message)
+		}
+		// Try to parse as string
+		var errStr string
+		if err := json.Unmarshal(response.Error, &errStr); err == nil && errStr != "" {
+			return "", fmt.Errorf("OpenAI API error: %s", errStr)
+		}
+		// If neither works, show the raw error
+		return "", fmt.Errorf("OpenAI API error: %s", string(response.Error))
 	}
 
 	// Check if we got results
