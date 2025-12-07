@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/johnstilia/commitron/pkg/config"
+	"github.com/johnstilia/commitron/pkg/tokenizer"
 	"github.com/johnstilia/commitron/pkg/ui"
 )
 
@@ -273,6 +274,9 @@ func GenerateTextPrompt(cfg *config.Config, files []string, changes string) stri
 		"DO NOT include any explanatory text, analysis, or preamble like 'Based on the git diff provided' or 'It appears that'.",
 		"Your response should be the raw commit message that will be passed directly to git commit.",
 		"Write CONCISE commit messages in present tense for the following code changes. Be brief and to the point.",
+		"BE EXTREMELY CONCISE. Remove all unnecessary words.",
+		"Prefer: 'Add user auth' over 'Add a new feature for user authentication'",
+		"Prefer: 'Fix parsing bug' over 'Fix a bug in the parsing logic'",
 	}
 
 	// Add specific format requirements for conventional commits first to emphasize importance
@@ -287,17 +291,14 @@ func GenerateTextPrompt(cfg *config.Config, files []string, changes string) stri
 
 	// Add body instructions based on configuration
 	if cfg.Commit.IncludeBody {
-		prompts = append(prompts, fmt.Sprintf("STRICT REQUIREMENT: Include a commit body with bullet points that is VERY CONCISE and MUST NOT exceed %d characters. Format the body as specific bullet points explaining what was changed. DO NOT include line statistics (+/-), file lists, or raw metadata from the diff. FOCUS ONLY on actual code changes in direct, technical language. Each bullet point should be a specific action taken. BODY IS ABSOLUTELY REQUIRED AND MUST NOT BE EMPTY OR OMITTED. KEEP IT CONCISE - aim for brief, clear explanations without unnecessary words.", cfg.Commit.MaxBodyLength))
-		
+		prompts = append(prompts, fmt.Sprintf("STRICT REQUIREMENT: Include a commit body that is a CONCISE NARRATIVE SUMMARY (1-3 sentences) and MUST NOT exceed %d characters. Write a cohesive paragraph explaining WHAT changed and WHY, not a list of individual changes. DO NOT use bullet points. DO NOT include line statistics (+/-), file lists, or raw metadata. FOCUS on the overall impact and purpose of the changes. Mention both additions AND deletions if significant. BODY IS ABSOLUTELY REQUIRED AND MUST NOT BE EMPTY. KEEP IT BRIEF - a short paragraph is better than a long list.", cfg.Commit.MaxBodyLength))
+
 		prompts = append(prompts, "EXACT OUTPUT FORMAT EXAMPLE (your response should look exactly like this):")
 		prompts = append(prompts, "fix: Resolve blocking issue in damage check worker")
 		prompts = append(prompts, "")
-		prompts = append(prompts, "- Increased prefetch_count from 1 to 10 to allow concurrent job processing")
-		prompts = append(prompts, "- Made job processing non-blocking using asyncio.create_task()")
-		prompts = append(prompts, "- Created dedicated process_damage_check_job() function for isolated job handling")
-		prompts = append(prompts, "- Jobs now process concurrently instead of sequentially blocking each other")
-		
-		prompts = append(prompts, "DO NOT add any text before or after this format. Start directly with the commit type.")
+		prompts = append(prompts, "Refactored job processing to support concurrent execution by increasing prefetch count and removing blocking waits. Removed the synchronous processing loop and replaced with async task creation, allowing multiple damage checks to run in parallel without blocking the main worker thread.")
+
+		prompts = append(prompts, "DO NOT add any text before or after this format. Start directly with the commit type. Write the body as a SHORT PARAGRAPH, not bullet points.")
 	} else {
 		prompts = append(prompts, "Do not include a commit body, only provide the subject line.")
 	}
@@ -359,12 +360,23 @@ When analyzing the code changes:
 		if strings.Contains(changes, "diff --git") || strings.Contains(changes, "# Summary of changes") {
 			prompts = append(prompts, fmt.Sprintf("\nGit Diff:\n```\n%s\n```", changes))
 		} else {
-			// Truncate changes if they're too long
-			originalLength := len(changes)
-			if len(changes) > cfg.Context.MaxContextLength {
-				changes = changes[:cfg.Context.MaxContextLength] + "...[truncated]"
+			// Token-aware truncation (secondary check; main truncation happens in GenerateCommitMessage)
+			tokenizerModel := cfg.Context.TokenizerModel
+			if tokenizerModel == "" {
+				tokenizerModel = cfg.AI.Model
+			}
+
+			originalTokens := tokenizer.CountTokens(changes, tokenizerModel)
+			maxContextTokens := cfg.Context.MaxInputTokens
+			if maxContextTokens == 0 {
+				maxContextTokens = 100000
+			}
+
+			if originalTokens > maxContextTokens {
+				changes = tokenizer.TruncateToTokenLimit(changes, maxContextTokens, tokenizerModel)
 				if cfg.AI.Debug {
-					debugPrint(cfg, "TRUNCATED CHANGES", fmt.Sprintf("Original: %d chars, Truncated: %d chars", originalLength, cfg.Context.MaxContextLength))
+					newTokens := tokenizer.CountTokens(changes, tokenizerModel)
+					debugPrint(cfg, "TRUNCATED", fmt.Sprintf("%d → %d tokens", originalTokens, newTokens))
 				}
 			}
 			prompts = append(prompts, fmt.Sprintf("\nDiff changes:\n```\n%s\n```", changes))
@@ -861,10 +873,70 @@ func GenerateCommitMessage(cfg *config.Config, files []string, changes string) (
 		}
 	}
 
+	// Token-aware processing
+	tokenizerModel := cfg.Context.TokenizerModel
+	if tokenizerModel == "" {
+		tokenizerModel = cfg.AI.Model // Default to AI model
+	}
+
+	inputTokens := tokenizer.CountTokens(changes, tokenizerModel)
+	providerLimit := tokenizer.GetProviderTokenLimit(string(cfg.AI.Provider), cfg.AI.Model)
+	maxTokens := cfg.Context.MaxInputTokens
+	if maxTokens == 0 || maxTokens > providerLimit {
+		maxTokens = providerLimit // Use safe provider limit
+	}
+
+	// Debug: Show token analysis
+	if cfg.AI.Debug {
+		debugPrint(cfg, "TOKEN ANALYSIS", map[string]interface{}{
+			"input_tokens":   inputTokens,
+			"max_tokens":     maxTokens,
+			"provider_limit": providerLimit,
+			"model":          tokenizerModel,
+		})
+	}
+
+	// Apply smart processing if exceeds limit
+	if inputTokens > maxTokens {
+		strategy := cfg.Context.DiffStrategy
+		if strategy == "auto" {
+			// Auto-select strategy based on size
+			if inputTokens < maxTokens*2 {
+				strategy = "summarize"
+			} else {
+				strategy = "batch"
+			}
+		}
+
+		debugPrint(cfg, "PROCESSING LARGE DIFF", fmt.Sprintf("Using %s strategy (%d tokens > %d limit)", strategy, inputTokens, maxTokens))
+
+		var processed string
+		var processErr error
+
+		switch strategy {
+		case "batch":
+			processed, processErr = BatchSummarize(changes, maxTokens/10, cfg)
+		case "summarize":
+			processed, processErr = BuildContextFromDiff(changes, int(float64(maxTokens)*0.8), cfg) // 80% of limit
+		default: // "truncate"
+			processed = tokenizer.TruncateToTokenLimit(changes, int(float64(maxTokens)*0.8), tokenizerModel)
+		}
+
+		if processErr == nil {
+			changes = processed
+			finalTokens := tokenizer.CountTokens(changes, tokenizerModel)
+			debugPrint(cfg, "PROCESSED RESULT", fmt.Sprintf("%d → %d tokens (%.1f%% reduction)", inputTokens, finalTokens, 100.0*(1.0-float64(finalTokens)/float64(inputTokens))))
+		} else {
+			debugPrint(cfg, "PROCESSING ERROR", processErr.Error())
+			// Fallback to simple truncation on error
+			changes = tokenizer.TruncateToTokenLimit(changes, int(float64(maxTokens)*0.8), tokenizerModel)
+		}
+	}
+
 	// Debug: Show input data
 	if cfg.AI.Debug {
 		debugPrint(cfg, "INPUT FILES", files)
-		debugPrint(cfg, "INPUT CHANGES", changes)
+		debugPrint(cfg, "INPUT CHANGES (token-processed)", fmt.Sprintf("%d chars, %d tokens", len(changes), tokenizer.CountTokens(changes, tokenizerModel)))
 		debugPrint(cfg, "CONFIG SETTINGS", map[string]interface{}{
 			"Convention":       cfg.Commit.Convention,
 			"IncludeBody":      cfg.Commit.IncludeBody,
@@ -872,7 +944,8 @@ func GenerateCommitMessage(cfg *config.Config, files []string, changes string) (
 			"MaxBodyLength":    cfg.Commit.MaxBodyLength,
 			"Provider":         cfg.AI.Provider,
 			"Model":            cfg.AI.Model,
-			"MaxContextLength": cfg.Context.MaxContextLength,
+			"MaxInputTokens":   cfg.Context.MaxInputTokens,
+			"DiffStrategy":     cfg.Context.DiffStrategy,
 		})
 	}
 
@@ -1206,12 +1279,23 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 		}
 	}
 
-	// Truncate changes if they're too long
-	originalLength := len(changes)
-	if len(changes) > cfg.Context.MaxContextLength {
-		changes = changes[:cfg.Context.MaxContextLength] + "...[truncated]"
+	// Token-aware truncation (this is a secondary check; main truncation happens in GenerateCommitMessage)
+	tokenizerModel := cfg.Context.TokenizerModel
+	if tokenizerModel == "" {
+		tokenizerModel = cfg.AI.Model
+	}
+
+	originalTokens := tokenizer.CountTokens(changes, tokenizerModel)
+	maxContextTokens := cfg.Context.MaxInputTokens
+	if maxContextTokens == 0 {
+		maxContextTokens = 100000
+	}
+
+	if originalTokens > maxContextTokens {
+		changes = tokenizer.TruncateToTokenLimit(changes, maxContextTokens, tokenizerModel)
 		if cfg.AI.Debug {
-			debugPrint(cfg, "TRUNCATED CHANGES", fmt.Sprintf("Original: %d chars, Truncated: %d chars", originalLength, cfg.Context.MaxContextLength))
+			newTokens := tokenizer.CountTokens(changes, tokenizerModel)
+			debugPrint(cfg, "TRUNCATED", fmt.Sprintf("%d → %d tokens", originalTokens, newTokens))
 		}
 	}
 
@@ -1309,35 +1393,47 @@ func buildPrompt(cfg *config.Config, files []string, changes string) string {
 	}
 }
 
-// extractKeyDiffContent focuses on the most important parts of the diff, removing headers and metadata
+// extractKeyDiffContent focuses on the most important parts of the diff using smart summarization
 func extractKeyDiffContent(diff string) string {
-	// Split the diff into lines
-	lines := strings.Split(diff, "\n")
-	var result []string
-	inActualDiff := false
+	// Use new smart summarization
+	fileDiffs := ParseDiffByFile(diff)
+	if len(fileDiffs) == 0 {
+		// Fallback to old behavior if parsing fails
+		lines := strings.Split(diff, "\n")
+		var result []string
+		inActualDiff := false
 
-	for _, line := range lines {
-		// Skip summary and header sections
-		if strings.HasPrefix(line, "# ") || strings.HasPrefix(line, "Summary of changes") {
-			continue
+		for _, line := range lines {
+			// Skip summary and header sections
+			if strings.HasPrefix(line, "# ") || strings.HasPrefix(line, "Summary of changes") {
+				continue
+			}
+
+			// Detect start of actual diff content
+			if strings.HasPrefix(line, "diff --git") {
+				inActualDiff = true
+			}
+
+			if inActualDiff {
+				result = append(result, line)
+			}
 		}
 
-		// Detect start of actual diff content
-		if strings.HasPrefix(line, "diff --git") {
-			inActualDiff = true
+		if len(result) == 0 {
+			return diff
 		}
 
-		if inActualDiff {
-			result = append(result, line)
-		}
+		return strings.Join(result, "\n")
 	}
 
-	// If we didn't find any actual diff content, return the original
-	if len(result) == 0 {
-		return diff
+	// Generate summaries for all files
+	var summaries []string
+	for _, fd := range fileDiffs {
+		summary := SummarizeFileDiff(fd)
+		summaries = append(summaries, summary)
 	}
 
-	return strings.Join(result, "\n")
+	return strings.Join(summaries, "\n\n")
 }
 
 // bodyExample returns the appropriate body example text based on whether body is included
@@ -1462,18 +1558,33 @@ func generateWithOpenAI(cfg *config.Config, prompt string) (string, error) {
 
 	// Check for API error
 	if len(response.Error) > 0 {
+		var errorMessage string
+
 		// Try to parse as object first
 		var errResp ErrorResponse
 		if err := json.Unmarshal(response.Error, &errResp); err == nil && errResp.Message != "" {
-			return "", fmt.Errorf("OpenAI API error: %s", errResp.Message)
+			errorMessage = errResp.Message
+		} else {
+			// Try to parse as string
+			var errStr string
+			if err := json.Unmarshal(response.Error, &errStr); err == nil && errStr != "" {
+				errorMessage = errStr
+			} else {
+				// If neither works, use the raw error
+				errorMessage = string(response.Error)
+			}
 		}
-		// Try to parse as string
-		var errStr string
-		if err := json.Unmarshal(response.Error, &errStr); err == nil && errStr != "" {
-			return "", fmt.Errorf("OpenAI API error: %s", errStr)
+
+		// Enhanced error handling for token limit errors
+		if strings.Contains(errorMessage, "maximum context length") || strings.Contains(errorMessage, "context_length_exceeded") {
+			return "", fmt.Errorf("OpenAI API error: %s\n\nChangeset too large even after optimization. Consider:\n"+
+				"  1. Split into smaller commits\n"+
+				"  2. Set diff_strategy: 'batch' in your config\n"+
+				"  3. Reduce max_input_tokens in your config\n"+
+				"  4. Disable include_diff temporarily", errorMessage)
 		}
-		// If neither works, show the raw error
-		return "", fmt.Errorf("OpenAI API error: %s", string(response.Error))
+
+		return "", fmt.Errorf("OpenAI API error: %s", errorMessage)
 	}
 
 	// Check if we got results

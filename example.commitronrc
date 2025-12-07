@@ -54,10 +54,35 @@ context:
   # STRONGLY RECOMMENDED to keep this enabled
   include_diff: true
 
-  # Maximum length for the context to avoid exceeding token limits
-  # Increase for large changes, decrease if you hit token limits
-  # For more accurate messages with large diffs, increase this value
-  max_context_length: 4000
+  # DEPRECATED: Use max_input_tokens instead
+  # Maximum character length for the context (kept for backward compatibility)
+  # max_context_length: 4000
+
+  # NEW: Maximum tokens for input context (recommended over max_context_length)
+  # This is the actual token limit sent to the AI provider
+  # OpenAI models (GPT-4, GPT-4o): 100,000 is safe under 128K limit
+  # Claude models: up to 180,000 tokens
+  # Gemini 1.5+: up to 900,000 tokens
+  # Ollama: depends on model, typically 8,000
+  max_input_tokens: 100000
+
+  # NEW: Strategy for handling large diffs that exceed token limits
+  # Options:
+  #   - "auto": Automatically choose based on size (recommended)
+  #   - "summarize": Intelligently summarize diff preserving key changes
+  #   - "batch": Process very large diffs in batches (for 200K+ tokens)
+  #   - "truncate": Simple truncation at token boundary
+  diff_strategy: auto
+
+  # NEW: Model to use for token counting (leave empty to use ai.model)
+  # Only set this if you want different tokenization than your AI model
+  # tokenizer_model: ""
+
+  # NEW: Enable smart diff summarization
+  # When true, uses priority-based summarization for large diffs
+  # High-priority files (core logic) get full context
+  # Low-priority files (tests, docs) get summaries
+  summarization_enabled: true
 
   # Include statistics about file changes (+/- lines)
   # Helps AI understand the magnitude and type of changes

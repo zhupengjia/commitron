@@ -59,13 +59,17 @@ type Config struct {
 
 	// Additional context to provide to the AI
 	Context struct {
-		IncludeFileNames     bool `yaml:"include_file_names"`                 // Include file names in the context
-		IncludeDiff          bool `yaml:"include_diff"`                       // Include the diff in the context
-		MaxContextLength     int  `yaml:"max_context_length"`                 // Maximum length for the context
-		IncludeFileStats     bool `yaml:"include_file_stats"`                 // Include stats about file changes (+/- lines)
-		IncludeFileSummaries bool `yaml:"include_file_summaries"`             // Include brief description of what each file does
-		ShowFirstLinesOfFile int  `yaml:"show_first_lines_of_file,omitempty"` // Show first N lines of each file for better context
-		IncludeRepoStructure bool `yaml:"include_repo_structure,omitempty"`   // Include high-level repo structure
+		IncludeFileNames     bool   `yaml:"include_file_names"`                 // Include file names in the context
+		IncludeDiff          bool   `yaml:"include_diff"`                       // Include the diff in the context
+		MaxContextLength     int    `yaml:"max_context_length"`                 // Maximum length for the context (deprecated, use MaxInputTokens)
+		IncludeFileStats     bool   `yaml:"include_file_stats"`                 // Include stats about file changes (+/- lines)
+		IncludeFileSummaries bool   `yaml:"include_file_summaries"`             // Include brief description of what each file does
+		ShowFirstLinesOfFile int    `yaml:"show_first_lines_of_file,omitempty"` // Show first N lines of each file for better context
+		IncludeRepoStructure bool   `yaml:"include_repo_structure,omitempty"`   // Include high-level repo structure
+		MaxInputTokens       int    `yaml:"max_input_tokens,omitempty"`         // Maximum tokens for input context (replaces MaxContextLength)
+		DiffStrategy         string `yaml:"diff_strategy,omitempty"`            // Strategy for handling large diffs: "auto", "summarize", "batch", "truncate"
+		TokenizerModel       string `yaml:"tokenizer_model,omitempty"`          // Model to use for token counting (empty = use AI model)
+		SummarizationEnabled bool   `yaml:"summarization_enabled,omitempty"`    // Enable smart diff summarization
 	} `yaml:"context"`
 
 	// User interface configuration
@@ -98,11 +102,15 @@ func DefaultConfig() *Config {
 	// Default context settings
 	cfg.Context.IncludeFileNames = true
 	cfg.Context.IncludeDiff = true
-	cfg.Context.MaxContextLength = 4000
+	cfg.Context.MaxContextLength = 4000 // Deprecated, kept for backward compatibility
 	cfg.Context.IncludeFileStats = false
 	cfg.Context.IncludeFileSummaries = false
 	cfg.Context.ShowFirstLinesOfFile = 0
 	cfg.Context.IncludeRepoStructure = false
+	cfg.Context.MaxInputTokens = 100000          // 100K tokens (safe under most model limits)
+	cfg.Context.DiffStrategy = "auto"            // Auto-select strategy based on size
+	cfg.Context.TokenizerModel = ""              // Empty = use cfg.AI.Model
+	cfg.Context.SummarizationEnabled = true
 
 	// Default UI settings
 	cfg.UI.EnableTUI = true
