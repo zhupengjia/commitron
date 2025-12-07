@@ -886,40 +886,57 @@ func GenerateCommitMessage(cfg *config.Config, files []string, changes string) (
 		maxTokens = providerLimit // Use safe provider limit
 	}
 
+	// Reserve space for prompt overhead and response
+	// Prompt overhead: instructions, file info, etc. (~15K tokens typical)
+	// Response: cfg.AI.MaxTokens (usually 1000-5000)
+	promptOverhead := 15000
+	responseTokens := cfg.AI.MaxTokens
+	if responseTokens == 0 {
+		responseTokens = 5000
+	}
+	// Calculate available space for changes (50% of remaining space to be safe)
+	availableForChanges := (maxTokens - promptOverhead - responseTokens) / 2
+	if availableForChanges < 10000 {
+		availableForChanges = 10000 // Minimum 10K tokens for changes
+	}
+
 	// Debug: Show token analysis
 	if cfg.AI.Debug {
 		debugPrint(cfg, "TOKEN ANALYSIS", map[string]interface{}{
-			"input_tokens":   inputTokens,
-			"max_tokens":     maxTokens,
-			"provider_limit": providerLimit,
-			"model":          tokenizerModel,
+			"input_tokens":         inputTokens,
+			"max_tokens":           maxTokens,
+			"provider_limit":       providerLimit,
+			"prompt_overhead":      promptOverhead,
+			"response_tokens":      responseTokens,
+			"available_for_changes": availableForChanges,
+			"model":                tokenizerModel,
 		})
 	}
 
-	// Apply smart processing if exceeds limit
-	if inputTokens > maxTokens {
+	// Apply smart processing if exceeds available space
+	if inputTokens > availableForChanges {
 		strategy := cfg.Context.DiffStrategy
-		if strategy == "auto" {
+		if strategy == "" || strategy == "auto" {
 			// Auto-select strategy based on size
-			if inputTokens < maxTokens*2 {
+			if inputTokens < availableForChanges*3 {
 				strategy = "summarize"
 			} else {
 				strategy = "batch"
 			}
 		}
 
-		debugPrint(cfg, "PROCESSING LARGE DIFF", fmt.Sprintf("Using %s strategy (%d tokens > %d limit)", strategy, inputTokens, maxTokens))
+		debugPrint(cfg, "PROCESSING LARGE DIFF", fmt.Sprintf("Using %s strategy (%d tokens > %d available)", strategy, inputTokens, availableForChanges))
 
 		var processed string
 		var processErr error
 
 		switch strategy {
 		case "batch":
-			processed, processErr = BatchSummarize(changes, maxTokens/10, cfg)
+			processed, processErr = BatchSummarize(changes, availableForChanges/5, cfg)
 		case "summarize":
-			processed, processErr = BuildContextFromDiff(changes, int(float64(maxTokens)*0.8), cfg) // 80% of limit
+			processed, processErr = BuildContextFromDiff(changes, availableForChanges, cfg)
 		default: // "truncate"
-			processed = tokenizer.TruncateToTokenLimit(changes, int(float64(maxTokens)*0.8), tokenizerModel)
+			processed = tokenizer.TruncateToTokenLimit(changes, availableForChanges, tokenizerModel)
 		}
 
 		if processErr == nil {
@@ -929,14 +946,24 @@ func GenerateCommitMessage(cfg *config.Config, files []string, changes string) (
 		} else {
 			debugPrint(cfg, "PROCESSING ERROR", processErr.Error())
 			// Fallback to simple truncation on error
-			changes = tokenizer.TruncateToTokenLimit(changes, int(float64(maxTokens)*0.8), tokenizerModel)
+			changes = tokenizer.TruncateToTokenLimit(changes, availableForChanges, tokenizerModel)
 		}
+	}
+
+	// FINAL SAFETY: Ensure changes is ALWAYS under hard limit before building prompt
+	// This is the last line of defense
+	finalChangesTokens := tokenizer.CountTokens(changes, tokenizerModel)
+	hardLimit := availableForChanges
+	if finalChangesTokens > hardLimit {
+		debugPrint(cfg, "HARD LIMIT ENFORCEMENT", fmt.Sprintf("Changes still %d tokens > %d limit, forcing truncation", finalChangesTokens, hardLimit))
+		changes = tokenizer.TruncateToTokenLimit(changes, hardLimit, tokenizerModel)
+		finalChangesTokens = tokenizer.CountTokens(changes, tokenizerModel)
 	}
 
 	// Debug: Show input data
 	if cfg.AI.Debug {
 		debugPrint(cfg, "INPUT FILES", files)
-		debugPrint(cfg, "INPUT CHANGES (token-processed)", fmt.Sprintf("%d chars, %d tokens", len(changes), tokenizer.CountTokens(changes, tokenizerModel)))
+		debugPrint(cfg, "INPUT CHANGES (final)", fmt.Sprintf("%d chars, %d tokens", len(changes), finalChangesTokens))
 		debugPrint(cfg, "CONFIG SETTINGS", map[string]interface{}{
 			"Convention":       cfg.Commit.Convention,
 			"IncludeBody":      cfg.Commit.IncludeBody,
@@ -962,6 +989,55 @@ func GenerateCommitMessage(cfg *config.Config, files []string, changes string) (
 
 	// Debug: Show the prompt being sent to the AI
 	debugPrint(cfg, "AI PROMPT", prompt)
+
+	// Final safety check: ensure prompt doesn't exceed safe limit
+	promptTokens := tokenizer.CountTokens(prompt, tokenizerModel)
+	finalResponseTokens := cfg.AI.MaxTokens
+	if finalResponseTokens == 0 {
+		finalResponseTokens = 5000
+	}
+	safeLimit := maxTokens - finalResponseTokens - 5000 // Extra buffer for safety
+
+	if cfg.AI.Debug {
+		debugPrint(cfg, "FINAL TOKEN CHECK", map[string]interface{}{
+			"prompt_tokens":   promptTokens,
+			"response_tokens": finalResponseTokens,
+			"safe_limit":      safeLimit,
+			"total_would_be":  promptTokens + finalResponseTokens,
+			"max_tokens":      maxTokens,
+		})
+	}
+
+	// If still too large, do emergency truncation by rebuilding with minimal info
+	if promptTokens > safeLimit {
+		debugPrint(cfg, "EMERGENCY TRUNCATION", fmt.Sprintf("Prompt %d tokens exceeds safe limit %d, using summary only", promptTokens, safeLimit))
+
+		// Extract just a summary of changes for emergency mode
+		summary := extractKeyDiffContent(changes)
+		summaryTokens := tokenizer.CountTokens(summary, tokenizerModel)
+		maxSummaryTokens := safeLimit / 2 // Use half the safe limit for summary
+
+		if summaryTokens > maxSummaryTokens {
+			summary = tokenizer.TruncateToTokenLimit(summary, maxSummaryTokens, tokenizerModel)
+		}
+
+		// Rebuild prompt with minimal overhead
+		minimalPrompt := fmt.Sprintf(`Generate a concise commit message for these changes. Use conventional commits format (type: subject).
+
+Changes summary:
+%s
+
+Files: %s
+
+Output ONLY the commit message, nothing else. Keep subject under %d characters.`,
+			summary,
+			strings.Join(files, ", "),
+			cfg.Commit.MaxLength)
+
+		prompt = minimalPrompt
+		promptTokens = tokenizer.CountTokens(prompt, tokenizerModel)
+		debugPrint(cfg, "EMERGENCY PROMPT", fmt.Sprintf("Rebuilt prompt: %d tokens", promptTokens))
+	}
 
 	var rawResponse string
 

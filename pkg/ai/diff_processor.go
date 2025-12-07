@@ -327,19 +327,21 @@ func calculateFilePriority(file FileDiff) int {
 
 // BuildContextFromDiff intelligently builds context within token limits
 func BuildContextFromDiff(diff string, maxTokens int, cfg *config.Config) (string, error) {
+	model := cfg.Context.TokenizerModel
+	if model == "" {
+		model = cfg.AI.Model
+	}
+
 	if !cfg.Context.SummarizationEnabled {
 		// Fallback to simple truncation
-		model := cfg.Context.TokenizerModel
-		if model == "" {
-			model = cfg.AI.Model
-		}
 		return tokenizer.TruncateToTokenLimit(diff, maxTokens, model), nil
 	}
 
 	// Parse and prioritize files
 	files := ParseDiffByFile(diff)
 	if len(files) == 0 {
-		return diff, nil
+		// Can't parse diff format, fallback to truncation
+		return tokenizer.TruncateToTokenLimit(diff, maxTokens, model), nil
 	}
 
 	prioritized := PrioritizeFiles(files)
@@ -347,10 +349,6 @@ func BuildContextFromDiff(diff string, maxTokens int, cfg *config.Config) (strin
 	// Allocate token budget
 	var result strings.Builder
 	remainingTokens := maxTokens
-	model := cfg.Context.TokenizerModel
-	if model == "" {
-		model = cfg.AI.Model
-	}
 
 	result.WriteString("=== Diff Summary ===\n\n")
 	headerTokens := tokenizer.CountTokens(result.String(), model)
@@ -402,16 +400,18 @@ func BuildContextFromDiff(diff string, maxTokens int, cfg *config.Config) (strin
 
 // BatchSummarize handles extremely large diffs by processing in batches
 func BatchSummarize(diff string, batchTokenSize int, cfg *config.Config) (string, error) {
-	files := ParseDiffByFile(diff)
-	if len(files) == 0 {
-		return diff, nil
-	}
-
-	prioritized := PrioritizeFiles(files)
 	model := cfg.Context.TokenizerModel
 	if model == "" {
 		model = cfg.AI.Model
 	}
+
+	files := ParseDiffByFile(diff)
+	if len(files) == 0 {
+		// Can't parse diff format, fallback to truncation
+		return tokenizer.TruncateToTokenLimit(diff, batchTokenSize*3, model), nil
+	}
+
+	prioritized := PrioritizeFiles(files)
 
 	// Group files into batches
 	var batches [][]FileWithPriority
