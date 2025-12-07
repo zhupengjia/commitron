@@ -1,73 +1,179 @@
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![GPL3 License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
-[![Ask Me Anything][ask-me-anything]][personal-page]
+# Commitron
 
-<!-- PROJECT LOGO -->
-<br />
-<p align="center">
-  <a href="https://github.com/stiliajohny/commitron">
-    <img src="https://raw.githubusercontent.com/stiliajohny/commitron/master/.assets/logo-new.png" alt="Main Logo" width="80" height="80">
-  </a>
-
-  <h3 align="center">commitron</h3>
-
-  <p align="center">
-    AI-driven CLI tool that generates optimal, context-aware commit messages, streamlining your version control process with precision and efficiency
-    <br />
-    <a href="./README.md"><strong>Explore the docs »</strong></a>
-    <br />
-    <br />
-    <a href="https://github.com/stiliajohny/commitron/issues/new?labels=i%3A+bug&template=1-bug-report.md">Report Bug</a>
-    ·
-    <a href="https://github.com/stiliajohny/commitron/issues/new?labels=i%3A+enhancement&template=2-feature-request.md">Request Feature</a>
-  </p>
-</p>
+AI-powered CLI tool that automatically generates intelligent, context-aware commit messages.
 
 ## Table of Contents
 
 - [Features](#features)
-- [Example Output](#example-output)
 - [Installation](#installation)
-- [Usage](#usage)
+- [Quick Start](#quick-start)
 - [Configuration](#configuration)
-- [API Keys](#api-keys)
-- [Key Improvements](#key-improvements)
-- [Contributing](#contributing)
+- [Usage Examples](#usage-examples)
+- [Advanced Features](#advanced-features)
+- [Troubleshooting](#troubleshooting)
 - [License](#license)
-- [Contact](#contact)
-
-# Commitron
-
-Commitron is an AI-powered CLI tool that automatically generates meaningful commit messages and handles the entire commit workflow seamlessly.
 
 ## Features
 
-- 🤖 **AI-Powered Commit Messages**: Uses AI to generate meaningful, structured commit messages
-- 🔄 **Automatic File Staging**: Automatically stages tracked modified files when no files are staged
-- 🎯 **Smart File Detection**: Only stages tracked files, ignores untracked files for clean commits
-- 📝 **Structured Output**: Generates commit messages with bullet-point descriptions of changes
-- 🚀 **No User Confirmation**: Automatically commits with generated messages for streamlined workflow
-- 🧩 **Multiple AI Providers**:
-  - OpenAI (ChatGPT)
-  - Google Gemini
-  - Ollama (local inference)
-  - Anthropic Claude
-- 📋 **Commit Conventions**:
-  - [Conventional Commits](https://www.conventionalcommits.org/) (recommended)
-  - Plain text
-  - Custom templates
-- ⚙️ **Fully Configurable**: Customizable settings via configuration file
-- 🛠️ **Easy Build System**: Makefile support with custom Go path configuration
+- 🤖 **AI-Powered Commit Messages**: Generates meaningful, structured commit messages
+- 🎯 **Token Optimization**: Handles large changesets (200K+ tokens) with smart summarization
+- 📝 **Narrative Summaries**: Creates concise paragraph summaries explaining what changed and why
+- 🗑️ **Complete Change Tracking**: Mentions both additions and deletions
+- 🚀 **Auto-Staging**: Automatically stages tracked modified files (no manual `git add` needed)
+- 🔧 **Custom Endpoints**: Works with OpenAI-compatible APIs (LocalAI, vLLM, etc.)
+- 🧩 **Multiple AI Providers**: OpenAI, Claude, Gemini, Ollama (local)
+- 📋 **Commit Conventions**: Conventional Commits, plain text, or custom templates
+- ⚙️ **Fully Configurable**: Extensive YAML configuration
+- 🎨 **Clean UI**: Colored output, progress indicators, file icons
 
-## Example output
+## Installation
 
-Commitron now works seamlessly without manual intervention. Here's what you'll see:
+### Using Go Install
 
-**When you have unstaged changes:**
+```bash
+go install github.com/zhupengjia/commitron/cmd/commitron@latest
+```
+
+### Manual Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/zhupengjia/commitron.git
+cd commitron
+
+# Build using Make
+make build
+
+# Add to your PATH
+cp bin/commitron /usr/local/bin/
+```
+
+### Dependencies
+
+- Go 1.21+
+- Dependencies managed automatically via Go modules
+
+## Quick Start
+
+1. **Initialize configuration:**
+```bash
+commitron init
+```
+
+2. **Edit `~/.commitronrc`** with your API key:
+```yaml
+ai:
+  provider: openai
+  api_key: sk-your-api-key-here
+  model: gpt-4o
+```
+
+3. **Generate and commit:**
+```bash
+# Make some changes to your code
+commitron
+```
+
+That's it! Commitron will auto-stage modified files and create a commit with an AI-generated message.
+
+## Configuration
+
+### Basic Configuration
+
+Create `~/.commitronrc`:
+
+```yaml
+# AI provider configuration
+ai:
+  provider: openai              # openai, claude, gemini, ollama
+  api_key: your-api-key-here   # Not needed for ollama
+  model: gpt-4o                 # Model name for your provider
+  temperature: 0.7
+  max_tokens: 1000
+
+# Commit message settings
+commit:
+  convention: conventional      # conventional, none, custom
+  include_body: true           # Generate summary paragraph
+  max_length: 120              # Subject line limit
+  max_body_length: 1000        # Body limit
+
+# Context settings
+context:
+  include_file_names: true
+  include_diff: true
+  max_input_tokens: 100000     # Token limit (100K for OpenAI)
+  diff_strategy: auto          # auto, summarize, batch, truncate
+  summarization_enabled: true
+
+# UI settings
+ui:
+  enable_tui: true
+  confirm_commit: false         # Auto-commit without confirmation
+```
+
+### Provider-Specific Settings
+
+**OpenAI:**
+```yaml
+ai:
+  provider: openai
+  api_key: sk-your-key
+  model: gpt-4o
+```
+
+**Claude:**
+```yaml
+ai:
+  provider: claude
+  api_key: sk-ant-your-key
+  model: claude-3-5-sonnet-20241022
+```
+
+**Gemini:**
+```yaml
+ai:
+  provider: gemini
+  api_key: your-gemini-key
+  model: gemini-2.0-flash-exp
+```
+
+**Ollama (Local):**
+```yaml
+ai:
+  provider: ollama
+  model: qwen2.5:latest
+  ollama_host: http://localhost:11434
+  # No API key needed
+```
+
+### Get API Keys
+
+- **OpenAI**: https://platform.openai.com/api-keys
+- **Claude**: https://console.anthropic.com/keys
+- **Gemini**: https://aistudio.google.com/app/apikey
+- **Ollama**: Run locally (no API key needed)
+
+## Usage Examples
+
+### Basic Usage
+
+```bash
+# Generate and commit (auto-stages tracked files)
+commitron
+
+# Preview message without committing
+commitron --dry-run
+
+# Use custom config file
+commitron --config /path/to/config.yaml
+
+# Show version
+commitron version
+```
+
+### Example Output
+
 ```bash
 $ commitron
 ⚠️  No staged files found. Automatically staging all modified files...
@@ -77,245 +183,185 @@ $ commitron
 
 💬 Generated Commit Message
 ────────────────────────
-fix: Resolve blocking issue in damage check worker
+feat(api): add rate limiting and request validation
 
-- Increased prefetch_count from 1 to 10 to allow concurrent job processing
-- Made job processing non-blocking using asyncio.create_task()
-- Created dedicated process_damage_check_job() function for isolated job handling
-- Jobs now process concurrently instead of sequentially blocking each other
+Implemented token bucket rate limiter to prevent API abuse and added
+comprehensive request validation middleware. Enhanced error handling
+to return detailed validation errors with field-level feedback.
 ────────────────────────
 
 💾 Creating commit... ✓ complete
-```
-
-**When you already have staged files:**
-```bash
-$ commitron
-🤖 Analyzing changes...
-
-💬 Generated Commit Message
-────────────────────────
-feat(auth): add JWT token refresh mechanism
-
-- Implemented automatic token refresh before expiration
-- Added refresh token storage in secure HTTP-only cookies
-- Created token validation middleware for protected routes
-- Updated login flow to return both access and refresh tokens
-────────────────────────
-
-💾 Creating commit... ✓ complete
-```
-
-The commit is automatically created with the AI-generated message - no manual confirmation needed!
-
-## Installation
-
-### Using Homebrew (macOS)
-
-```bash
-# Add the tap directly from the commitron repository
-brew tap stiliajohny/commitron https://github.com/stiliajohny/commitron.git
-
-# Then install commitron
-brew install commitron
-```
-
-### Manual Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/johnstilia/commitron.git
-
-# Navigate to the directory
-cd commitron
-
-# Build using Make (recommended)
-make build
-
-# Or build with Go directly
-go build -o bin/commitron ./cmd/commitron
-
-# Add to your PATH or copy to a directory in your PATH
-cp bin/commitron /usr/local/bin/  # or your preferred location
-```
-
-**Note:** If Go is not in your PATH, the Makefile will automatically use the Go installation at `/home/pzhu/software/go/bin/go`. You can modify the `GO_PATH` variable in the Makefile to match your Go installation.
-
-## Usage
-
-Commitron is designed to be simple and automatic:
-
-```bash
-# Basic usage - automatically stages tracked files and commits
-commitron
-
-# Or manually stage files first (traditional approach)
-git add .
-commitron
-
-# Use with a custom config file
-commitron --config /path/to/custom/config.yaml
-# or using shorthand flags
-commitron -c /path/to/custom/config.yaml
-```
-
-### Available Commands
-
-```bash
-commitron                     # Generate and commit (default command)
-commitron generate            # Generate and commit (explicit)
-commitron init                # Initialize a new configuration file
-commitron version             # Show version information
-
-# Command options
-commitron generate --dry-run  # Preview message without committing
-commitron generate -d         # Shorthand for --dry-run
-commitron init --force        # Overwrite existing config
-commitron init -f             # Shorthand for --force
-
-# Get help for any command
-commitron --help
-commitron [command] --help
 ```
 
 ### Auto-Staging Behavior
 
-- **Tracked files only**: Only stages files that are already tracked by Git (shown in "Changes not staged for commit")
-- **Ignores untracked**: Never stages new files (shown in "Untracked files")
-- **Smart detection**: If you have staged files, uses those; if not, automatically stages modified tracked files
-- **Clean workflow**: No manual staging required for existing files
+- **Tracked files only**: Only stages files already tracked by Git
+- **Ignores untracked**: Never stages new files automatically
+- **Smart detection**: Uses existing staged files if present
+- **No manual staging**: No need to run `git add` before committing
 
 ### Build Commands
 
 ```bash
-make build                    # Build for current platform
-make build-all               # Build for all supported platforms  
-make test                    # Run tests
-make clean                   # Clean build artifacts
-make help                    # Show available targets
+make build          # Build for current platform
+make build-all      # Build for all platforms (Linux, macOS, Windows)
+make test           # Run tests
+make clean          # Clean build artifacts
 ```
 
-## Configuration
+## Advanced Features
 
-Commitron looks for a configuration file at `~/.commitronrc`. This is a YAML file that allows you to customize how the tool works.
+### Custom OpenAI Endpoints
 
-Example configuration:
+Use with any OpenAI-compatible API:
+
+**LocalAI:**
+```yaml
+ai:
+  provider: openai
+  openai_endpoint: http://localhost:1234/v1/chat/completions
+  model: gpt-4o
+```
+
+**vLLM:**
+```yaml
+ai:
+  provider: openai
+  openai_endpoint: http://localhost:8000/v1/chat/completions
+  model: meta-llama/Llama-3.1-70B
+```
+
+**Corporate Proxy:**
+```yaml
+ai:
+  provider: openai
+  openai_endpoint: https://openai-proxy.company.com/v1/chat/completions
+  api_key: your-corporate-key
+```
+
+### Token Optimization
+
+Commitron automatically handles large changesets:
+
+1. **Token Counting**: Accurately counts tokens for the AI model
+2. **Smart Summarization**: Prioritizes important files (core logic > tests > docs)
+3. **Batch Processing**: Handles extreme cases (>150K tokens)
+
+**File Priority Scoring:**
+
+| File Type | Priority | Treatment |
+|-----------|----------|-----------|
+| `pkg/ai/`, `pkg/git/` | High | Full diff context |
+| `cmd/`, `pkg/` | Medium | Full or summarized |
+| `*_test.go`, `*.md` | Low | Summarized only |
+
+**Enable debug mode to see optimization:**
+```yaml
+ai:
+  debug: true
+```
+
+### Diff Processing Strategies
+
+Configure how large diffs are handled:
 
 ```yaml
-# AI provider configuration
-ai:
-  provider: openai           # openai, gemini, ollama, claude
-  api_key: your-api-key-here  # Not needed for ollama
-  model: gpt-3.5-turbo       # Model to use
-
-# Commit message configuration
-commit:
-  convention: conventional   # conventional, none, custom
-  include_body: true        # Generate bullet-point descriptions
-  max_length: 72           # Maximum subject line length
-  max_body_length: 500     # Maximum body length
-
-# Context settings for AI analysis
 context:
-  include_file_names: true      # Include file names in analysis
-  include_diff: true           # Include git diff in analysis
-  max_context_length: 4000     # Maximum context to send to AI
-  include_file_stats: false    # Include file statistics
-  include_file_summaries: false # Include file type summaries
-
-# UI settings
-ui:
-  enable_tui: true            # Enable text UI formatting
-  confirm_commit: false       # Auto-commit without confirmation (recommended)
+  diff_strategy: auto  # Options: auto, summarize, batch, truncate
 ```
 
-**Key Settings for Best Experience:**
-- Set `include_body: true` for structured bullet-point commit messages
-- Set `confirm_commit: false` for automatic commits without manual confirmation
-- Use `conventional` convention for standardized commit formats
+- **auto**: Automatically selects strategy based on size (recommended)
+- **summarize**: Priority-based summarization preserving key changes
+- **batch**: Processes very large diffs in batches (200K+ tokens)
+- **truncate**: Simple truncation at token boundary
 
-See [example.commitronrc](example.commitronrc) for a complete example with all available options.
+### Token Limits by Provider
 
-## API Keys
+The system uses safe limits automatically:
 
-To use Commitron, you'll need API keys for your chosen AI provider:
+- **OpenAI**: 100,000 tokens (safe under 128K limit)
+- **Claude**: 180,000 tokens (safe under 200K limit)
+- **Gemini**: 900,000 tokens (safe under 1M limit)
+- **Ollama**: 8,000 tokens (conservative default)
 
-- OpenAI: <https://platform.openai.com/api-keys>
-- Google Gemini: <https://aistudio.google.com/app/apikey>
-- Anthropic Claude: <https://console.anthropic.com/keys>
+Override if needed:
+```yaml
+context:
+  max_input_tokens: 50000  # Use lower limit
+```
 
-For Ollama, you need to have it running locally. See [Ollama documentation](https://github.com/ollama/ollama) for more information.
+## Troubleshooting
 
-## Key Improvements
+### Token Limit Errors
 
-This version of Commitron includes several enhancements for a better developer experience:
+If you get "maximum context length exceeded" errors:
 
-### 🔄 Automatic File Staging
-- No need to manually run `git add` before committing
-- Automatically detects and stages tracked modified files
-- Ignores untracked files to prevent accidental commits
-- Uses `git add -u` to stage only tracked files
+1. **Split commits**: Break changes into smaller logical chunks
+2. **Use batch strategy**:
+   ```yaml
+   context:
+     diff_strategy: batch
+   ```
+3. **Reduce token limit**:
+   ```yaml
+   context:
+     max_input_tokens: 50000
+   ```
+4. **Temporary workaround** (generates generic message):
+   ```yaml
+   context:
+     include_diff: false
+   ```
 
-### 📝 Enhanced Commit Messages
-- Generates structured commit messages with bullet-point descriptions
-- Follows conventional commit format by default
-- AI generates direct commit messages without explanatory preamble
-- Example format:
-  ```
-  fix: Resolve blocking issue in damage check worker
-  
-  - Increased prefetch_count from 1 to 10 to allow concurrent job processing
-  - Made job processing non-blocking using asyncio.create_task()
-  - Created dedicated process_damage_check_job() function for isolated job handling
-  ```
+### No Staged Files Warning
 
-### 🚀 Streamlined Workflow
-- No user confirmation required - commits automatically
-- Clean output with colored progress indicators
-- Displays generated message before committing
-- Supports dry-run mode for testing (`--dry-run`)
+If you see "No staged files found" but have changes:
 
-### 🛠️ Improved Build System
-- Custom Makefile with Go path detection
-- Support for non-standard Go installations
-- Multiple build targets (current platform, all platforms)
-- Easy development workflow
+- Commitron only auto-stages **tracked** files
+- New/untracked files must be manually added: `git add <file>`
+- Check status: `git status`
 
+### API Errors
 
-## Contributing
+**OpenAI rate limits:**
+- Wait a moment and retry
+- Use a different model tier
 
-Contributions are welcome! Here's how to get started:
+**Invalid API key:**
+- Verify key in `~/.commitronrc`
+- Check key has proper permissions
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (use commitron! 😉)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+**Custom endpoint not working:**
+- Verify endpoint URL is correct
+- Ensure endpoint is OpenAI-compatible
+- Check network connectivity
+
+### Debug Mode
+
+Enable detailed logging:
+
+```yaml
+ai:
+  debug: true
+```
+
+Shows:
+- Token counts before/after optimization
+- Strategy selection reasoning
+- File prioritization scores
+- Full API requests/responses
 
 ## License
 
 Distributed under the GPLv3 License. See [LICENSE.txt](LICENSE.txt) for more information.
 
-## Contact
+## Acknowledgments
 
-John Stilia - <stilia.johny@gmail.com>
+- Original project by [John Stilia](https://github.com/stiliajohny/commitron)
+- Uses [tiktoken-go](https://github.com/pkoukk/tiktoken-go) for token counting
 
-Project Link: [https://github.com/stiliajohny/commitron](https://github.com/stiliajohny/commitron)
+---
 
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
+**Project**: https://github.com/zhupengjia/commitron
 
-[contributors-shield]: https://img.shields.io/github/contributors/stiliajohny/commitron.svg?style=for-the-badge
-[contributors-url]: https://github.com/stiliajohny/commitron/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/stiliajohny/commitron.svg?style=for-the-badge
-[forks-url]: https://github.com/stiliajohny/commitron/network/members
-[stars-shield]: https://img.shields.io/github/stars/stiliajohny/commitron.svg?style=for-the-badge
-[stars-url]: https://github.com/stiliajohny/commitron/stargazers
-[issues-shield]: https://img.shields.io/github/issues/stiliajohny/commitron.svg?style=for-the-badge
-[issues-url]: https://github.com/stiliajohny/commitron/issues
-[license-shield]: https://img.shields.io/github/license/stiliajohny/commitron?style=for-the-badge
-[license-url]: https://github.com/stiliajohny/commitron/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/johnstilia/
-[ask-me-anything]: https://img.shields.io/badge/Ask%20me-anything-1abc9c.svg?style=for-the-badge
-[personal-page]: https://github.com/stiliajohny
+For more configuration options, see [example.commitronrc](example.commitronrc)
